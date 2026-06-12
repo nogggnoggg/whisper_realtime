@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <title>工廠雙語即時對話系統</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="app">
+
+    <!-- ── Topbar ── -->
+    <header class="topbar" id="topbar">
+      <span class="topbar-brand">中文 ↔ English</span>
+      <span class="sep">|</span>
+      <span id="topbar-mode">Audio: Manual</span>
+      <span class="sep" id="topbar-threshold-sep" hidden>|</span>
+      <span id="topbar-threshold" hidden>Threshold: 60%</span>
+      <span class="sep">|</span>
+      <span class="pill info" id="topbar-status-pill">Status: Ready</span>
+      <span class="sep">|</span>
+      <span class="pill topbar-refined" id="topbar-refined-pill"
+            role="button" tabindex="0" title="點擊切換精準翻譯">精準翻譯 OFF</span>
+      <span class="sep">|</span>
+      <span>Line A</span>
+      <span class="topbar-settings">⚙ 設定</span>
+    </header>
+
+    <!-- ── Conversation Feed ── -->
+    <div class="feed-wrapper">
+      <div class="feed" id="feed"
+           role="log" aria-live="polite" aria-label="Conversation feed">
+        <p class="feedtitle">對話紀錄　Conversation Feed</p>
+        <div id="cards-container"></div>
+      </div>
+      <div class="scroll-hint" id="scroll-hint"
+           role="button" tabindex="0" aria-label="Jump to latest" hidden>
+        ↓ 有新對話，點擊回到最新
+      </div>
+    </div>
+
+    <!-- ── Audio Settings Panel ── -->
+    <div class="audio" id="audio-panel">
+      <div class="audiohd">
+        <p>Audio Settings</p>
+        <button class="speak on" id="speak-btn" type="button">🎙 Speak</button>
+      </div>
+      <p class="hint" id="speak-hint">Click Speak to start speaking.</p>
+
+      <!-- Mode radio -->
+      <div class="modes">
+        <span class="mode-option off" id="mode-auto" data-mode="auto"
+              role="radio" aria-checked="false" tabindex="0">
+          <span class="mk" id="mk-auto"></span>Always On
+        </span>
+        <span class="mode-option on" id="mode-manual" data-mode="manual"
+              role="radio" aria-checked="true" tabindex="0">
+          <span class="mk sel" id="mk-manual"></span>Manual Speak
+        </span>
+      </div>
+
+      <!-- Threshold + Meter (greyed in Manual mode) -->
+      <div id="threshold-section" class="grey">
+        <div class="row">
+          <label for="threshold-slider">Threshold</label>
+          <input type="range" min="0" max="100" value="60"
+                 id="threshold-slider" disabled>
+          <span class="threshold-val" id="threshold-val">—</span>
+        </div>
+        <div class="row">
+          <label>Level Meter</label>
+          <div class="meter" id="level-meter">
+            <i id="level-bar" style="width:0%"></i>
+            <span class="mark" id="threshold-mark" style="left:60%"></span>
+          </div>
+        </div>
+        <div class="scale">
+          <span>-50dB</span><span>-37.5dB</span><span>-25dB</span>
+          <span>-12.5dB</span><span>0dB</span>
+        </div>
+      </div>
+
+      <!-- Microphone selector (always enabled) -->
+      <div class="row" style="margin-top:10px;">
+        <label for="mic-select">Microphone</label>
+        <select id="mic-select">
+          <option value="">— 偵測中 —</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- ── Safety Notice ── -->
+    <div class="safety">
+      ⚠ 請注意安全，專注工作。避免在機台運轉或危險區域進行長時間對話。<br>
+      <span class="en">For safety, stay focused on your work. Avoid long
+        conversations while machines are operating or in hazardous areas.</span>
+    </div>
+
+  </div><!-- .app -->
+
+  <script type="module" src="audio.js"></script>
+  <script type="module" src="app.js"></script>
+</body>
+</html>
