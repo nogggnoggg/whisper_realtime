@@ -197,3 +197,24 @@ Threshold % ↔ dB 對應：0% = -50dB，100% = 0dB，線性對映（60% ≈ -20
 - DB 必填：運維成本高，不適合快速迭代部署
 - Pre-roll 用於 Manual 模式：對話流不符，Manual 是使用者主動按鍵，不需預先錄製
 - Glossary 以術語對 (source_term, target_term) 為主鍵：無法支援多語言（同一中文術語對應不同韓文譯法），難以查詢
+
+## D-013：Zeabur 部署形態與實測策略
+
+**日期**：2026-06-12
+
+**決策**：
+(a) **同專案雙 service**：Zeabur `whisper_realtime` 專案內建 `postgresql`（官方模板 B20CX0，PG 18）與 `app`（GitHub main + inline Dockerfile node:22-alpine，port 8080，網域 whisper-realtime-leon.zeabur.app）；app 以 `DATABASE_URL=${POSTGRES_CONNECTION_STRING}` 內網直連 PG，並設 `PGSSLMODE=disable`。
+(b) **Phase 2 實測改在部署環境做**：放棄「本機連 Zeabur PG」路線。
+(c) **模型/供應商選擇以環境變數浮出**：`TRANSLATE_PROVIDER`、`TRANSLATE_MODEL`、`REFINE_MODEL`、`STT_MODEL` 直接放上 Zeabur app service（填程式預設值），使用者可在後台改而不必讀程式碼。
+(d) **OPENAI_API_KEY 佔位值過渡**：部署時先填佔位字串讓 server 能啟動（server 缺 key 會 process.exit），完成 DB/REST 自動化測試後由使用者在 Zeabur 後台換真 key（真 key 永不經過對話）。
+
+**理由**：
+- (b) Lightsail 防火牆只開 HTTP(S)，外網 5432 不通；且 Zeabur MCP `execute-command` 跑在無叢集網路的臨時容器，容器內 psql 一律逾時——DB 驗證唯一可靠途徑是 app 的 REST API + runtime log
+- (c) 使用者明確要求：不一定用 OpenAI、不一定用 gpt-5-mini，模型選擇必須可見可改
+- (d) 兼顧「key 不經對話」鐵律與「自動化測試需要 server 活著」
+
+**否決方案與原因**：
+- 開放 PG 對外 TCP 供本機測試：要動 Lightsail 防火牆且暴露資料庫，風險大於收益
+- 等使用者填真 key 再測試：阻塞所有 DB/Glossary 驗證，且該部分根本不需要 OpenAI
+
+**遺留**：git push 是否觸發 Zeabur 自動重建未驗證；重新部署可再呼叫 MCP `deploy-from-specification`（同 spec）。STT 僅 OpenAI 實作，若要「完全去 OpenAI」需另立 STT 供應商抽象工作項。

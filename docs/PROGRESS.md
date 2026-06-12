@@ -4,10 +4,10 @@
 
 ## 📌 目前狀態（每次更新時覆寫此區塊，不要往下追加）
 
-最後更新：2026-06-12
+最後更新：2026-06-12（Zeabur 部署完成、Phase 2 自動化實測通過）
 
-**所在階段**：Phase 2 實裝完成，等待使用者實測
-**怎麼跑**：使用者 PowerShell `npm start`（port 3100，.env 已設定）→ http://localhost:3100
+**所在階段**：已部署 Zeabur 並通過 Glossary/DB/UI/WS 自動化測試，等使用者換真 OPENAI_API_KEY 後做線上語音實測
+**怎麼跑**：線上 https://whisper-realtime-leon.zeabur.app ；本機 PowerShell `npm start`（port 3100）→ http://localhost:3100
 
 **整體 Checklist**：
 
@@ -21,14 +21,37 @@
 - [x] Phase 2：Route B 精準翻譯、Glossary、PostgreSQL（D-012 決策定案，schema 按 (source_lang, target_lang) 語言對設計）
 - [x] PROTOCOL.md 擴充（WS settings/refined 訊息、DB schema、REST API、管理頁）
 - [x] DECISIONS.md D-012 Phase 2 架構決策
-- [ ] **使用者實測 Phase 2（需先在 Zeabur 建 PG、填 DATABASE_URL、測試 Route B/Glossary） ← 現在卡在這**
-- [ ] Zeabur 連動部署（server ID 見下方 git/Zeabur 紀錄；需注入 OPENAI_API_KEY + STT_*/TRANSLATE_* + DATABASE_URL 環境變數）
+- [x] Zeabur 部署：PG service + app service（Docker/node:22-alpine）+ 網域 whisper-realtime-leon.zeabur.app（D-013）
+- [x] Phase 2 自動化實測（Workflow phase2-deploy-verify）：Glossary REST CRUD 9/9 過、靜態頁/資產 200、WS 握手 OK、PG 持久化確認（id=1 zh/en 隔離區→quarantine zone）
+- [ ] **使用者把 Zeabur app 的 OPENAI_API_KEY 佔位值換成真 key ← 現在卡在這（換完服務自動重啟）**
+- [ ] 線上語音實測 Route A + Route B 精準翻譯（含 Glossary 術語套用、translation_logs 寫入確認）
+- [ ] Zeabur 平台層存取保護（basic auth / IP 限制，部署驗證 OK 後設定）
 - [ ] Phase 3：韓文 + 語言對雙選單（PRD §7.10）
 
-**下一步**：(1) 使用者在 Zeabur 建 PostgreSQL service；(2) 本機 .env 補 DATABASE_URL 與 REFINE_MODEL；(3) 實測 Route B 精準翻譯 + Glossary 頁面 → (4) 問題修正後部署到 Zeabur
-**注意事項**：開發用 workflow 模式且 subagent 要做模型分配（CLAUDE.md Development conventions）；OPENAI_API_KEY 與 DATABASE_URL 在使用者本機 .env，永不經過對話。
+**下一步**：(1) 使用者在 Zeabur 後台把 app 的 `OPENAI_API_KEY` 換成真 key；(2) 開 https://whisper-realtime-leon.zeabur.app 做線上語音實測（Route A 轉錄/翻譯、Route B 精譯、Glossary 隔離區→quarantine zone 套用）；(3) OK 後設平台層存取保護
+**注意事項**：app 的模型/供應商由 Zeabur 環境變數控制：`TRANSLATE_PROVIDER`（openai/anthropic/custom）、`TRANSLATE_MODEL`、`REFINE_MODEL`、`STT_MODEL`；STT 目前僅 OpenAI 實作，OPENAI_API_KEY 必填。真 key 永不經過對話，由使用者在 Zeabur 後台填。開發用 workflow 模式且 subagent 要做模型分配（CLAUDE.md Development conventions）。
 
 ---
+
+## 2026-06-12 — Zeabur 部署 + Phase 2 自動化實測（晚間）
+
+**完成**：
+- Zeabur `whisper_realtime` 專案（projectId `6a2bfffe39f255e7f8bd12bf`，env `6a2bfffecf558888ca4bc7dc`）：
+  - `postgresql` service（官方模板 B20CX0，serviceId `6a2c24f039f255e7f8bd1a6a`，PG 18）
+  - `app` service（serviceId `6a2c25ad39f255e7f8bd1ac3`，GitHub main 0211c15，Dockerfile node:22-alpine，port 8080）
+  - 網域 https://whisper-realtime-leon.zeabur.app
+  - 環境變數：`DATABASE_URL=${POSTGRES_CONNECTION_STRING}`（內網直連）、`PGSSLMODE=disable`、`TRANSLATE_PROVIDER=openai`、`TRANSLATE_MODEL=gpt-5-mini`、`REFINE_MODEL=gpt-5-mini`、`STT_MODEL=gpt-realtime-whisper`、`OPENAI_API_KEY`＝**佔位值，待使用者換真 key**
+- Workflow `phase2-deploy-verify`（模型分配：glossary-api=haiku、ui-ws-smoke=haiku、db-verify=sonnet）：
+  - Glossary REST CRUD 9/9 通過（含 400/404/語言對過濾）；資料持久化於 PG（glossary_terms id=1，zh/en 隔離區→quarantine zone，enabled=true）
+  - 靜態頁 `/`、`/glossary.html`、`/app.js`、`/glossary.js` 皆 200；WSS 握手成功
+  - runtime log：`[db] 已連線，資料表就緒`，無任何 `[db]` 錯誤；佔位 key 觸發預期的 `[initSTT] failed`（證明 WS→OpenAI 鏈路有接上）
+
+**已知問題 / 教訓**：
+- 本機直連 Zeabur PG 不可行：Lightsail 防火牆擋外網 5432 → 改為「部署後於 Zeabur 內網實測」
+- Zeabur MCP `execute-command` 跑在隔離臨時容器（無叢集網路），psql 連 DB 一律逾時 → DB 驗證請改走 app 的 REST API 或 runtime log，別再用容器內 psql（db-verify agent 曾因此空轉 ~20 分鐘，已手動停止 workflow 改由主 session 驗證）
+- deploy 是用 MCP `deploy-from-specification`（GitHub source + inline Dockerfile）；git push 是否自動觸發重建尚未驗證，要重新部署可再呼叫同一 MCP 指令
+
+**下一步**：使用者換真 OPENAI_API_KEY → 線上語音實測 Route A/B + Glossary 套用 → 平台層存取保護
 
 ## 2026-06-12 — 文件定稿
 
