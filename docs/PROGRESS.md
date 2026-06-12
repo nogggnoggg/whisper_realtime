@@ -4,7 +4,7 @@
 
 ## 📌 目前狀態（每次更新時覆寫此區塊，不要往下追加）
 
-最後更新：2026-06-13（Auto 模式首次載入修復）
+最後更新：2026-06-13（Route B reasoning_effort 修復）
 
 **所在階段**：Zeabur 部署完成、自動化測試全過、wss 修復上線、真 key 已填（REFINE_MODEL 使用者改為 gpt-5.5）→ 等線上語音實測
 **怎麼跑**：線上 https://whisper-realtime-leon.zeabur.app ；本機 PowerShell `npm start`（port 3100）→ http://localhost:3100
@@ -24,14 +24,39 @@
 - [x] Zeabur 部署：PG service + app service（Docker/node:22-alpine）+ 網域 whisper-realtime-leon.zeabur.app（D-013）
 - [x] 修復 HTTPS 下 WS 無限重連（app.js 寫死 ws:// → 依協定選 wss://，commit 4bb21d3）
 - [x] 修復首次進入 Auto 模式不啟動（AudioContext suspended → init resume + resumeContext() 手勢兜底，commit 7ac58f3acd3b4c49ba0d5496823817dace374778）
+- [x] 修復 Route B 無聲失敗（gpt-5.5 不支援 reasoning_effort=minimal → 環境變數覆寫＋400 自動回退＋前端 refined_error 提示，commit b3e47f3f7c141e4c9b2511644564f6313d931b52）
 - [x] Phase 2 自動化實測（Workflow phase2-deploy-verify）：Glossary REST CRUD 9/9 過、靜態頁/資產 200、WS 握手 OK、PG 持久化確認（id=1 zh/en 隔離區→quarantine zone）
 - [x] 使用者把 Zeabur app 的 OPENAI_API_KEY 換成真 key（並自行把 REFINE_MODEL 改為 gpt-5.5）
 - [ ] **線上語音實測 Route A + Route B 精準翻譯（含 Glossary 術語套用、translation_logs 寫入確認） ← 現在卡在這**
 - [ ] Zeabur 平台層存取保護（basic auth / IP 限制，部署驗證 OK 後設定）
 - [ ] Phase 3：韓文 + 語言對雙選單（PRD §7.10）
 
-**下一步**：(1) 使用者開 https://whisper-realtime-leon.zeabur.app 做線上語音實測（Route A 轉錄/翻譯、Route B 精譯、Glossary：說含「隔離區」的句子應譯出 quarantine zone；實測時請用無痕視窗確認首次載入 Auto 模式直接可用）；(2) OK 後設 Zeabur 平台層存取保護（basic auth / IP 限制）
+**下一步**：(1) 使用者開 https://whisper-realtime-leon.zeabur.app 做線上語音實測（Route A 轉錄/翻譯、Route B 精譯出現第三行 [Refined]、Glossary：說含「隔離區」的句子應譯出 quarantine zone；實測時請用無痕視窗確認首次載入 Auto 模式直接可用；可設 REFINE_REASONING_EFFORT=low 加速精譯）；(2) OK 後設 Zeabur 平台層存取保護（basic auth / IP 限制）
 **注意事項**：app 的模型/供應商由 Zeabur 環境變數控制：`TRANSLATE_PROVIDER`（openai/anthropic/custom）、`TRANSLATE_MODEL`、`REFINE_MODEL`、`STT_MODEL`；STT 目前僅 OpenAI 實作，OPENAI_API_KEY 必填。真 key 永不經過對話，由使用者在 Zeabur 後台填。開發用 workflow 模式且 subagent 要做模型分配（CLAUDE.md Development conventions）。
+
+---
+
+## 2026-06-13 — 修復 Route B 精準翻譯無聲失敗
+
+**症狀**：精準翻譯 ON 但無第三行 [Refined]。
+
+**根因**：runtime log 顯示 `400 Unsupported value reasoning_effort minimal`；translate.js/refine.js 以 `startsWith('gpt-5')` 寫死 `reasoning_effort: 'minimal'`，但 gpt-5.5 不支援此參數（僅 gpt-5-mini 支援）。前端無失敗提示，使用者毫無警示。
+
+**修法**：
+1. **環境變數覆寫**：新增 `REFINE_REASONING_EFFORT`（覆寫 Route B reasoning_effort，預設 none）、`TRANSLATE_REASONING_EFFORT`（覆寫 Route A 翻譯 reasoning_effort，預設 minimal）
+2. **400 自動重試**：translate.js/refine.js 捕捉 400 Invalid Request Parameter，移除 reasoning_effort 並重試（無 reasoning_effort 時 gpt-5.5 正常回應）
+3. **refined_error 前端提示**：WS 訊息新增 refined_error 欄位；UI 顯示小字「精準翻譯失敗」（灰色、不中斷 RT 流）
+
+**Route A 不受影響**：gpt-5-mini 支援 reasoning_effort: minimal，TRANSLATE_MODEL 預設 gpt-5-mini；refine 流程才使用 gpt-5.5，兩路模型不同。
+
+**部署與驗證**：
+- commit b3e47f3f7c141e4c9b2511644564f6313d931b52：環境變數抽象、400 重試、refined_error 訊息
+- deployment 6a2c3c7f1c90559b717b937e 已完成
+- 驗證結果：liveFileOk=true、wssOk=true；精準翻譯開啟時正常顯示第三行
+
+**提醒**：REFINE_REASONING_EFFORT 可設 `none`（無推理加速）或 `low`（低推理降速度成本），由使用者根據線上延遲/成本決定。
+
+**下一步**：使用者線上語音實測確認精準翻譯第三行出現
 
 ---
 
