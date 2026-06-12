@@ -191,8 +191,9 @@ function handleServerMessage(msg) {
     case 'draft':       handleDraft(msg);        break;
     case 'final':       handleFinal(msg);        break;
     case 'translation': handleTranslation(msg);  break;
-    case 'refined':     handleRefined(msg);      break;
-    case 'error':       handleServerError(msg);  break;
+    case 'refined':       handleRefined(msg);       break;
+    case 'refined_error': handleRefinedError(msg);  break;
+    case 'error':         handleServerError(msg);   break;
     default:
       console.warn('[app] Unknown message type:', msg.type);
   }
@@ -253,6 +254,26 @@ function handleRefined(msg) {
   }
 
   scrollToBottomIfNeeded();
+}
+
+/**
+ * Handle refined_error message: append a small error notice to the matching card.
+ * Idempotent — will not add a second line if one already exists.
+ * @param {{itemId:string, message:string}} msg
+ */
+function handleRefinedError(msg) {
+  const el = cardsContainer.querySelector('[data-item-id="' + msg.itemId + '"]');
+  if (!el) return;
+  const body = el.querySelector('.card-body');
+  if (!body) return;
+
+  // 防重複：同一張卡片只顯示一行錯誤提示
+  if (body.querySelector('.refined-error')) return;
+
+  const errEl = document.createElement('p');
+  errEl.className = 'refined-error';
+  errEl.textContent = '精準翻譯失敗 Refined translation failed';
+  body.appendChild(errEl);
 }
 
 // ── Card Management ─────────────────────────────────────────────────────────

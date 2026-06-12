@@ -7,6 +7,9 @@
  *   custom    — 任何 OpenAI 相容端點（Gemini/Groq/Ollama 等）
  *
  * Export 簽名：translate(text, sourceLang) → Promise<string>
+ *
+ * gpt-5 系列：max_completion_tokens + reasoning_effort（預設 'minimal'，
+ * 可由 TRANSLATE_REASONING_EFFORT 環境變數覆寫；若模型不支援則自動移除重試）
  */
 
 import OpenAI from 'openai';
@@ -74,22 +77,42 @@ function buildSystemPrompt(sourceLang) {
 async function translateOpenAI(text, systemPrompt) {
   const model = process.env.TRANSLATE_MODEL ?? 'gpt-5-mini';
   const isGpt5Series = model.startsWith('gpt-5');
+  const reasoningEffort = process.env.TRANSLATE_REASONING_EFFORT ?? 'minimal';
 
   const extraParams = isGpt5Series
-    ? { max_completion_tokens: 512, reasoning_effort: 'minimal' }
+    ? { max_completion_tokens: 512, reasoning_effort: reasoningEffort }
     : { max_tokens: 512, temperature: 0.1 };
 
   const client = getOpenAIClient();
-  const response = await client.chat.completions.create({
-    model,
-    messages: [
-      { role: 'system', content: systemPrompt },
-      { role: 'user', content: text },
-    ],
-    ...extraParams,
-  });
-
-  return response.choices[0]?.message?.content?.trim() ?? '';
+  try {
+    const response = await client.chat.completions.create({
+      model,
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: text },
+      ],
+      ...extraParams,
+    });
+    return response.choices[0]?.message?.content?.trim() ?? '';
+  } catch (err) {
+    if (err.message && err.message.includes('reasoning_effort')) {
+      console.warn(
+        `[translate] 模型 ${model} 不支援 reasoning_effort=${reasoningEffort}，改用模型預設值重試`,
+      );
+      const retryParams = { ...extraParams };
+      delete retryParams.reasoning_effort;
+      const response = await client.chat.completions.create({
+        model,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: text },
+        ],
+        ...retryParams,
+      });
+      return response.choices[0]?.message?.content?.trim() ?? '';
+    }
+    throw err;
+  }
 }
 
 /**
@@ -130,18 +153,43 @@ async function translateCustom(text, systemPrompt) {
     throw new Error('TRANSLATE_MODEL is required when TRANSLATE_PROVIDER=custom');
   }
 
-  const client = getCustomClient();
-  const response = await client.chat.completions.create({
-    model,
-    messages: [
-      { role: 'system', content: systemPrompt },
-      { role: 'user', content: text },
-    ],
-    max_tokens: 512,
-    temperature: 0.1,
-  });
+  const isGpt5Series = model.startsWith('gpt-5');
+  const reasoningEffort = process.env.TRANSLATE_REASONING_EFFORT ?? 'minimal';
 
-  return response.choices[0]?.message?.content?.trim() ?? '';
+  const extraParams = isGpt5Series
+    ? { max_completion_tokens: 512, reasoning_effort: reasoningEffort }
+    : { max_tokens: 512, temperature: 0.1 };
+
+  const client = getCustomClient();
+  try {
+    const response = await client.chat.completions.create({
+      model,
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: text },
+      ],
+      ...extraParams,
+    });
+    return response.choices[0]?.message?.content?.trim() ?? '';
+  } catch (err) {
+    if (err.message && err.message.includes('reasoning_effort')) {
+      console.warn(
+        `[translate] 模型 ${model} 不支援 reasoning_effort=${reasoningEffort}，改用模型預設值重試`,
+      );
+      const retryParams = { ...extraParams };
+      delete retryParams.reasoning_effort;
+      const response = await client.chat.completions.create({
+        model,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: text },
+        ],
+        ...retryParams,
+      });
+      return response.choices[0]?.message?.content?.trim() ?? '';
+    }
+    throw err;
+  }
 }
 
 /**

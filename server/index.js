@@ -297,6 +297,7 @@ wss.on('connection', (clientWs) => {
                   }
                 } catch (err) {
                   console.warn('[route-b] 精準翻譯失敗:', err.message);
+                  send({ type: 'refined_error', itemId, message: err.message });
                 }
               })();
             }

@@ -139,6 +139,16 @@ ws://host/ws
 - 對應 `final` 的 `itemId`。
 - 前端在第三行顯示「精準翻譯：」加此文本。
 
+### 4.5.1 精準翻譯失敗通知
+
+```json
+{"type": "refined_error", "itemId": "item_abc123", "message": "reasoning_effort is not supported..."}
+```
+
+- Route B 呼叫失敗時發送（例如模型不支援 reasoning_effort 且重試後仍失敗）。
+- 前端在對應卡片尾端附加小字錯誤提示（僅顯示一次，不覆蓋）。
+- `itemId` 與 `final` 對應；`message` 為錯誤原文（供除錯用）。
+
 ### 4.6 錯誤通知
 
 ```json
@@ -238,6 +248,8 @@ Standby（不送音訊）
 | `SILENCE_DURATION` | Auto 模式無音時停止錄音持續時間（毫秒） | `2000` |
 | `DATABASE_URL` | PostgreSQL 連線字串（Zeabur PG 或自行部署，例 `postgresql://user:pass@host:5432/db`） | — |
 | `REFINE_MODEL` | 精準翻譯模型，沿用 TRANSLATE_PROVIDER（例 openai 時為 `gpt-4o` 等），無值時 Route B 停用 | — |
+| `REFINE_REASONING_EFFORT` | gpt-5 系列精準翻譯的 reasoning_effort 值（none/low/medium/high/xhigh/minimal，模型不支援時自動移除重試） | `minimal` |
+| `TRANSLATE_REASONING_EFFORT` | gpt-5 系列 Route A 翻譯的 reasoning_effort 值（none/low/medium/high/xhigh/minimal，模型不支援時自動移除重試） | `minimal` |
 
 載入方式：`dotenv`，`.env` 檔不進 git。
 

@@ -7,7 +7,8 @@
  * - 沿用 translate.js 的三 provider 模式（TRANSLATE_PROVIDER 環境變數）
  * - 模型優先級：REFINE_MODEL → TRANSLATE_MODEL → provider 預設
  *   openai 預設：gpt-5-mini；anthropic 預設：claude-haiku-4-5
- *   gpt-5 系列：max_completion_tokens + reasoning_effort:'minimal'
+ *   gpt-5 系列：max_completion_tokens + reasoning_effort（預設 'minimal'，
+ *   可由 REFINE_REASONING_EFFORT 環境變數覆寫；若模型不支援則自動移除重試）
  * - system prompt（英文）：提供原文、RT 翻譯、詞彙表、對話上下文；
  *   目標語言為 zh 時加入 Traditional Chinese 臺灣用語指示
  */
@@ -167,22 +168,42 @@ function buildUserMessage(sourceText, rtTranslation) {
 async function refineOpenAI(systemPrompt, userMessage) {
   const model = resolveModel('openai');
   const isGpt5Series = model.startsWith('gpt-5');
+  const reasoningEffort = process.env.REFINE_REASONING_EFFORT ?? 'minimal';
 
   const extraParams = isGpt5Series
-    ? { max_completion_tokens: 512, reasoning_effort: 'minimal' }
+    ? { max_completion_tokens: 512, reasoning_effort: reasoningEffort }
     : { max_tokens: 512, temperature: 0.2 };
 
   const client = getOpenAIClient();
-  const response = await client.chat.completions.create({
-    model,
-    messages: [
-      { role: 'system', content: systemPrompt },
-      { role: 'user', content: userMessage },
-    ],
-    ...extraParams,
-  });
-
-  return response.choices[0]?.message?.content?.trim() ?? '';
+  try {
+    const response = await client.chat.completions.create({
+      model,
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userMessage },
+      ],
+      ...extraParams,
+    });
+    return response.choices[0]?.message?.content?.trim() ?? '';
+  } catch (err) {
+    if (err.message && err.message.includes('reasoning_effort')) {
+      console.warn(
+        `[refine] 模型 ${model} 不支援 reasoning_effort=${reasoningEffort}，改用模型預設值重試`,
+      );
+      const retryParams = { ...extraParams };
+      delete retryParams.reasoning_effort;
+      const response = await client.chat.completions.create({
+        model,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userMessage },
+        ],
+        ...retryParams,
+      });
+      return response.choices[0]?.message?.content?.trim() ?? '';
+    }
+    throw err;
+  }
 }
 
 /**
@@ -217,17 +238,43 @@ async function refineAnthropic(systemPrompt, userMessage) {
  */
 async function refineCustom(systemPrompt, userMessage) {
   const model = resolveModel('custom');
+  const isGpt5Series = model.startsWith('gpt-5');
+  const reasoningEffort = process.env.REFINE_REASONING_EFFORT ?? 'minimal';
+
+  const extraParams = isGpt5Series
+    ? { max_completion_tokens: 512, reasoning_effort: reasoningEffort }
+    : { max_tokens: 512, temperature: 0.2 };
+
   const client = getCustomClient();
-  const response = await client.chat.completions.create({
-    model,
-    messages: [
-      { role: 'system', content: systemPrompt },
-      { role: 'user', content: userMessage },
-    ],
-    max_tokens: 512,
-    temperature: 0.2,
-  });
-  return response.choices[0]?.message?.content?.trim() ?? '';
+  try {
+    const response = await client.chat.completions.create({
+      model,
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userMessage },
+      ],
+      ...extraParams,
+    });
+    return response.choices[0]?.message?.content?.trim() ?? '';
+  } catch (err) {
+    if (err.message && err.message.includes('reasoning_effort')) {
+      console.warn(
+        `[refine] 模型 ${model} 不支援 reasoning_effort=${reasoningEffort}，改用模型預設值重試`,
+      );
+      const retryParams = { ...extraParams };
+      delete retryParams.reasoning_effort;
+      const response = await client.chat.completions.create({
+        model,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userMessage },
+        ],
+        ...retryParams,
+      });
+      return response.choices[0]?.message?.content?.trim() ?? '';
+    }
+    throw err;
+  }
 }
 
 // ── Public API ─────────────────────────────────────────────────────────────
