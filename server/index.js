@@ -20,6 +20,7 @@ import { dirname, join } from 'path';
 import { OpenAISTTSession } from './openai-stt.js';
 import { translate } from './translate.js';
 import { detectLang } from './lang.js';
+import { toTraditional } from './zh-convert.js';
 
 // ── Config ──────────────────────────────────────────────────────────────────
 
@@ -103,8 +104,9 @@ wss.on('connection', (clientWs) => {
     try {
       const stt = new OpenAISTTSession(API_KEY, {
         // draft: STT 回報轉錄中暫定文字（已累積全文）
+        // 中文 draft 同樣轉繁體，英文字元不受影響
         onDraft: (itemId, text) => {
-          send({ type: 'draft', itemId, text });
+          send({ type: 'draft', itemId, text: toTraditional(text) });
         },
 
         // final: 轉錄完成 → 偵測語言 → 回 final → 翻譯 → 回 translation
@@ -117,25 +119,29 @@ wss.on('connection', (clientWs) => {
             }
 
             const lang = detectLang(text);
+            // 中文原文：轉繁體後再送前端與後續翻譯
+            const finalText = lang === 'zh' ? toTraditional(text) : text;
             const ts = new Date()
               .toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit', hour12: false });
 
             // 1. 送出正式原文
-            send({ type: 'final', itemId, text, lang, ts });
+            send({ type: 'final', itemId, text: finalText, lang, ts });
             send({ type: 'status', state: 'processing' });
 
-            // 2. 翻譯
+            // 2. 翻譯（使用已轉繁體的 finalText 作為原文）
             let translatedText = '';
             try {
-              translatedText = await translate(text, lang);
+              translatedText = await translate(finalText, lang);
             } catch (err) {
               console.error('[translate] error:', err.message);
               send({ type: 'error', message: `翻譯失敗：${err.message}` });
             }
 
             // 3. 送出翻譯結果（即使翻譯失敗也送 ready）
+            // 英文→中文翻譯結果保底過一次繁體轉換
             if (translatedText) {
-              send({ type: 'translation', itemId, text: translatedText });
+              const translationOut = lang === 'en' ? toTraditional(translatedText) : translatedText;
+              send({ type: 'translation', itemId, text: translationOut });
             }
 
             send({ type: 'status', state: 'ready' });

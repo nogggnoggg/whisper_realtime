@@ -205,12 +205,18 @@ Standby（不送音訊）
 
 | 變數名 | 說明 | 預設值 |
 |---|---|---|
-| `OPENAI_API_KEY` | OpenAI API 金鑰（必填） | — |
+| `OPENAI_API_KEY` | OpenAI API 金鑰（provider=openai 時必填） | — |
 | `PORT` | HTTP/WS 伺服器埠號 | `3000` |
 | `STT_MODEL` | 語音識別模型 | `gpt-realtime-whisper` |
 | `STT_DELAY` | 轉錄延遲等級 | `medium` |
 | `STT_NOISE_REDUCTION` | 噪音消除等級 | `near_field` |
 | `STT_PROMPT` | 轉錄提示詞（工廠術語）| （留空使用內建） |
+| `TRANSLATE_PROVIDER` | 翻譯服務提供者 | `openai` |
+| `TRANSLATE_MODEL` | 翻譯模型名稱 | 依 provider（openai: `gpt-5-mini` / anthropic: `claude-haiku-4-5` / custom: 必填） |
+| `ANTHROPIC_API_KEY` | Anthropic API 金鑰（provider=anthropic 時必填） | — |
+| `TRANSLATE_BASE_URL` | 自訂翻譯端點基礎 URL（provider=custom 用，須相容 OpenAI 格式） | — |
+| `TRANSLATE_API_KEY` | 自訂翻譯端點 API 金鑰（provider=custom 用） | — |
+| `SILENCE_DURATION` | Auto 模式無音時停止錄音持續時間（毫秒） | `2000` |
 
 載入方式：`dotenv`，`.env` 檔不進 git。
 
@@ -262,6 +268,20 @@ Standby（不送音訊）
 - 使用者開啟頁面時建立新 session
 - 閒置 30 分鐘後自動結束
 - 使用者關閉頁面時前端通知後端結束 session
+
+### 6.9 中文輸出規範
+
+所有送往前端的中文文字（draft / final / translation）由後端使用 **OpenCC** 統一轉換為**台灣正體繁體中文**（簡體 → 繁體，zh-Hans → zh-Hant）。
+
+**實作方式**：
+- 在 `server/translate.js` 和 `server/openai-stt.js` 中的文字輸出環節，經由 OpenCC library 的 `cn2twp` 配置進行後處理
+- 對象：所有前端訊息中的文字欄位（`draft.text`、`final.text`、`translation.text` 若為中文）
+- 時機：STT 完成 / 翻譯完成，輸出訊息前執行
+
+**理由**：
+- STT 模型（如 Whisper、gpt-realtime-whisper）輸出簡繁隨機，不依賴模型選擇
+- 後處理方案與模型無關，保障一致性
+- OpenCC 轉換速度快、精度高，不增加延遲
 
 ---
 

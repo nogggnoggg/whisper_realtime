@@ -1,23 +1,148 @@
 /**
- * server/translate.js — 文字翻譯
+ * server/translate.js — 多供應商文字翻譯
  *
- * 使用 gpt-5-mini（OpenAI Chat Completions API，reasoning_effort: minimal 以求低延遲）
- * 進行 zh→en 或 en→zh 翻譯。System prompt 要求：只回譯文、口語簡潔、保留數字與單位。
+ * 支援三種 provider（由 TRANSLATE_PROVIDER 環境變數決定，預設 openai）：
+ *   openai    — OpenAI Chat Completions API
+ *   anthropic — Anthropic Messages API（@anthropic-ai/sdk）
+ *   custom    — 任何 OpenAI 相容端點（Gemini/Groq/Ollama 等）
+ *
+ * Export 簽名：translate(text, sourceLang) → Promise<string>
  */
 
 import OpenAI from 'openai';
+import Anthropic from '@anthropic-ai/sdk';
 
 /** @type {OpenAI|null} */
-let _client = null;
+let _openaiClient = null;
+/** @type {Anthropic|null} */
+let _anthropicClient = null;
+/** @type {OpenAI|null} */
+let _customClient = null;
 
-function getClient() {
-  if (!_client) {
-    _client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+function getOpenAIClient() {
+  if (!_openaiClient) {
+    _openaiClient = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
   }
-  return _client;
+  return _openaiClient;
 }
 
-const TRANSLATE_MODEL = 'gpt-5-mini';
+function getAnthropicClient() {
+  if (!_anthropicClient) {
+    _anthropicClient = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+  }
+  return _anthropicClient;
+}
+
+function getCustomClient() {
+  if (!_customClient) {
+    _customClient = new OpenAI({
+      baseURL: process.env.TRANSLATE_BASE_URL,
+      apiKey: process.env.TRANSLATE_API_KEY ?? 'not-needed',
+    });
+  }
+  return _customClient;
+}
+
+/**
+ * 建立工廠口譯 system prompt
+ * @param {"zh"|"en"} sourceLang
+ * @returns {string}
+ */
+function buildSystemPrompt(sourceLang) {
+  const targetLangName =
+    sourceLang === 'zh'
+      ? 'English'
+      : 'Traditional Chinese (繁體中文，臺灣用語)';
+  const sourceLangName = sourceLang === 'zh' ? 'Chinese' : 'English';
+
+  return [
+    `You are a factory-floor interpreter. Translate the ${sourceLangName} text to ${targetLangName}.`,
+    'Rules:',
+    '- Return ONLY the translated text. No explanations, labels, or quotation marks.',
+    '- Use natural, concise spoken language suitable for a factory environment.',
+    '- Preserve all numbers, units of measurement, and technical terms exactly as written.',
+    '- Do not add any content not present in the original text.',
+  ].join('\n');
+}
+
+/**
+ * OpenAI provider 翻譯
+ * @param {string} text
+ * @param {string} systemPrompt
+ * @returns {Promise<string>}
+ */
+async function translateOpenAI(text, systemPrompt) {
+  const model = process.env.TRANSLATE_MODEL ?? 'gpt-5-mini';
+  const isGpt5Series = model.startsWith('gpt-5');
+
+  const extraParams = isGpt5Series
+    ? { max_completion_tokens: 512, reasoning_effort: 'minimal' }
+    : { max_tokens: 512, temperature: 0.1 };
+
+  const client = getOpenAIClient();
+  const response = await client.chat.completions.create({
+    model,
+    messages: [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: text },
+    ],
+    ...extraParams,
+  });
+
+  return response.choices[0]?.message?.content?.trim() ?? '';
+}
+
+/**
+ * Anthropic provider 翻譯
+ * @param {string} text
+ * @param {string} systemPrompt
+ * @returns {Promise<string>}
+ */
+async function translateAnthropic(text, systemPrompt) {
+  const client = getAnthropicClient();
+  try {
+    const response = await client.messages.create({
+      model: process.env.TRANSLATE_MODEL ?? 'claude-haiku-4-5',
+      max_tokens: 512,
+      system: systemPrompt,
+      messages: [{ role: 'user', content: text }],
+    });
+
+    const textBlock = response.content.find((b) => b.type === 'text');
+    return textBlock?.text?.trim() ?? '';
+  } catch (err) {
+    if (err instanceof Anthropic.APIError) {
+      throw new Error(`Anthropic API error ${err.status}: ${err.message}`);
+    }
+    throw err;
+  }
+}
+
+/**
+ * Custom（OpenAI 相容）provider 翻譯
+ * @param {string} text
+ * @param {string} systemPrompt
+ * @returns {Promise<string>}
+ */
+async function translateCustom(text, systemPrompt) {
+  const model = process.env.TRANSLATE_MODEL;
+  if (!model) {
+    throw new Error('TRANSLATE_MODEL is required when TRANSLATE_PROVIDER=custom');
+  }
+
+  const client = getCustomClient();
+  const response = await client.chat.completions.create({
+    model,
+    messages: [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: text },
+    ],
+    max_tokens: 512,
+    temperature: 0.1,
+  });
+
+  return response.choices[0]?.message?.content?.trim() ?? '';
+}
 
 /**
  * 翻譯文字
@@ -28,29 +153,17 @@ const TRANSLATE_MODEL = 'gpt-5-mini';
 export async function translate(text, sourceLang) {
   if (!text || typeof text !== 'string' || text.trim() === '') return '';
 
-  const targetLangName =
-    sourceLang === 'zh' ? 'English' : 'Traditional Chinese (繁體中文)';
-  const sourceLangName = sourceLang === 'zh' ? 'Chinese' : 'English';
+  const systemPrompt = buildSystemPrompt(sourceLang);
+  const trimmed = text.trim();
+  const provider = process.env.TRANSLATE_PROVIDER ?? 'openai';
 
-  const systemPrompt = [
-    `You are a factory-floor interpreter. Translate the ${sourceLangName} text to ${targetLangName}.`,
-    'Rules:',
-    '- Return ONLY the translated text. No explanations, labels, or quotation marks.',
-    '- Use natural, concise spoken language suitable for a factory environment.',
-    '- Preserve all numbers, units of measurement, and technical terms exactly as written.',
-    '- Do not add any content not present in the original text.',
-  ].join('\n');
-
-  const client = getClient();
-  const response = await client.chat.completions.create({
-    model: TRANSLATE_MODEL,
-    messages: [
-      { role: 'system', content: systemPrompt },
-      { role: 'user', content: text.trim() },
-    ],
-    max_completion_tokens: 512,
-    reasoning_effort: 'minimal',
-  });
-
-  return response.choices[0]?.message?.content?.trim() ?? '';
+  switch (provider) {
+    case 'anthropic':
+      return translateAnthropic(trimmed, systemPrompt);
+    case 'custom':
+      return translateCustom(trimmed, systemPrompt);
+    case 'openai':
+    default:
+      return translateOpenAI(trimmed, systemPrompt);
+  }
 }

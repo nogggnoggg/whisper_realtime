@@ -80,3 +80,26 @@
 
 **已知問題**：
 - gpt-4o-transcribe 在 Realtime API 中是否支援 delta 事件（partial transcription）尚未驗證，可能需要轉錄邏輯調整
+
+## 2026-06-12 — 文件定稿：翻譯供應商抽象 & 繁體輸出規範
+
+**完成**：
+- **PROTOCOL.md 環境變數表擴充**：新增 `TRANSLATE_PROVIDER`（openai|anthropic|custom，預設 openai）、`TRANSLATE_MODEL`（預設依 provider：openai→gpt-5-mini / anthropic→claude-haiku-4-5 / custom→必填）、`ANTHROPIC_API_KEY`（provider=anthropic 時必填）、`TRANSLATE_BASE_URL` 與 `TRANSLATE_API_KEY`（provider=custom 用，OpenAI 相容端點）、`SILENCE_DURATION`（Auto 模式無音停止延遲，預設 2000ms，可調）
+- **PROTOCOL.md 新增 6.9 節「中文輸出規範」**：server 端以 OpenCC（zh-Hans → zh-Hant）統一後處理所有輸出中文（draft / final / translation），保證台灣正體繁體一致；理由與實作方式
+- **DECISIONS.md 新增 D-010「繁體中文輸出與翻譯供應商抽象」**：(a) server 端 OpenCC 後處理保證繁體（理由：STT 模型簡繁隨機，後處理不依賴特定模型）；(b) 翻譯層抽象為三 provider（理由：使用者 A/B 不同家模型，翻譯純文字進出最易抽換）；(c) silence duration 由 800ms 改為可調、預設 2000ms（理由：現場實測句中停頓 1-2 秒被提早切斷）
+- **Manual 模式「講完才顯示」修正**（稍早 commit）：draft 抑制、原文+翻譯同時渲染、12 秒保底
+
+**目前狀態**：
+- Phase 1 文件與功能完整，待實裝翻譯供應商抽象與繁體輸出後處理
+- Manual 模式已修正，可本機跑
+
+**下一步**：
+- 實裝翻譯供應商抽象（環境變數讀取 TRANSLATE_PROVIDER / TRANSLATE_MODEL，支援 openai / anthropic / custom 端點）
+- 實裝 OpenCC 後處理（所有中文輸出統一 zh-Hans → zh-Hant）
+- 調整 silence duration 預設 2000ms，環境變數 `SILENCE_DURATION` 可調
+- 使用者本機實測：繁體輸出手感、斷句精度、anthropic provider 翻譯品質
+- 驗證完成後 Zeabur 連動部署
+
+**已知問題**：
+- OpenCC library 選型待確認（node-opencc 或 opencc-wasm，需驗證 npm 可用性）
+- Anthropic Claude 模型在翻譯場景的成本 vs 品質對比待測

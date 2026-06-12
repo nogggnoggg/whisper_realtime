@@ -33,7 +33,7 @@
 // ---------------------------------------------------------------------------
 
 const TARGET_SAMPLE_RATE = 24000;
-const SILENCE_DURATION_MS = 800;     // default hold-off before ending
+const SILENCE_DURATION_MS_DEFAULT = 2000; // default hold-off before ending (ms)
 const MAX_UTTERANCE_MS = 20_000;     // hard cutoff
 const COOLDOWN_MS = 300;             // minimum gap between auto utterances
 const PCM_FLUSH_INTERVAL_MS = 20;   // how often worklet flushes PCM (informational)
@@ -74,6 +74,7 @@ export class AudioPipeline {
     this._state = 'idle';           // idle | standby | listening | ending
     this._mode = 'manual';          // manual | auto
     this._thresholdPct = 60;        // 0–100
+    this._silenceDurationMs = SILENCE_DURATION_MS_DEFAULT; // adjustable hold-off
 
     // AudioContext / Worklet
     this._audioCtx = null;
@@ -164,6 +165,15 @@ export class AudioPipeline {
    */
   setThreshold(pct) {
     this._thresholdPct = Math.max(0, Math.min(100, pct));
+  }
+
+  /**
+   * Update the silence hold-off duration used by the auto-mode state machine.
+   * Clamped to [300, 5000] ms.
+   * @param {number} ms
+   */
+  setSilenceDuration(ms) {
+    this._silenceDurationMs = Math.max(300, Math.min(5000, ms));
   }
 
   /**
@@ -300,7 +310,7 @@ export class AudioPipeline {
               this._stopUtterance();
               if (this._state !== 'idle') this._setState('standby');
             }
-          }, SILENCE_DURATION_MS);
+          }, this._silenceDurationMs);
         }
       } else {
         // Above threshold again — cancel silence timer

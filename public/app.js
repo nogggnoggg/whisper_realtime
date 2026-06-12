@@ -12,6 +12,7 @@ import { AudioPipeline } from './audio.js';
 /** @type {'manual'|'auto'} */
 let mode = 'manual';
 let thresholdPct = 60;
+let silenceDurationMs = 2000;
 let refinedOn = false;
 
 /** @type {WebSocket|null} */
@@ -51,6 +52,8 @@ const thresholdSlider   = /** @type {HTMLInputElement} */ (document.getElementBy
 const thresholdValEl    = /** @type {HTMLElement} */ (document.getElementById('threshold-val'));
 const thresholdMark     = /** @type {HTMLElement} */ (document.getElementById('threshold-mark'));
 const thresholdSection  = /** @type {HTMLElement} */ (document.getElementById('threshold-section'));
+const silenceSlider     = /** @type {HTMLInputElement} */ (document.getElementById('silence-slider'));
+const silenceValEl      = /** @type {HTMLElement} */ (document.getElementById('silence-val'));
 const levelBar          = /** @type {HTMLElement} */ (document.getElementById('level-bar'));
 const micSelect         = /** @type {HTMLSelectElement} */ (document.getElementById('mic-select'));
 const topbarModeEl      = /** @type {HTMLElement} */ (document.getElementById('topbar-mode'));
@@ -129,6 +132,9 @@ function initAudioPipeline() {
       updateTopbar();
     }
   });
+
+  // Apply persisted silence duration
+  ap.setSilenceDuration(silenceDurationMs);
 
   ap.init(selectedDeviceId || undefined)
     .then(function() {
@@ -437,12 +443,17 @@ function updateModeUI() {
   // Threshold section — greyed and disabled in Manual mode
   thresholdSection.classList.toggle('grey', !isAuto);
   thresholdSlider.disabled = !isAuto;
+  silenceSlider.disabled = !isAuto;
   if (isAuto) {
     thresholdValEl.textContent = thresholdPct + '%';
     thresholdValEl.style.fontWeight = '600';
+    silenceValEl.textContent = (silenceDurationMs / 1000).toFixed(1) + 's';
+    silenceValEl.style.fontWeight = '600';
   } else {
     thresholdValEl.textContent = '—';
     thresholdValEl.style.fontWeight = '';
+    silenceValEl.textContent = '—';
+    silenceValEl.style.fontWeight = '';
   }
 
   // Speak button + hint
@@ -498,6 +509,14 @@ thresholdSlider.addEventListener('input', function() {
   thresholdMark.style.left = thresholdPct + '%';
   if (ap) ap.setThreshold(thresholdPct);
   updateTopbar();
+});
+
+// ── Silence duration slider ──────────────────────────────────────────────────
+silenceSlider.addEventListener('input', function() {
+  silenceDurationMs = Number(silenceSlider.value);
+  silenceValEl.textContent = (silenceDurationMs / 1000).toFixed(1) + 's';
+  localStorage.setItem('sttSilenceMs', String(silenceDurationMs));
+  if (ap) ap.setSilenceDuration(silenceDurationMs);
 });
 
 // ── Microphone selector ─────────────────────────────────────────────────────
@@ -576,6 +595,19 @@ function updateTopbar() {
 }
 
 // ── Bootstrap ───────────────────────────────────────────────────────────────
+
+// Restore silence duration from localStorage
+(function() {
+  const stored = localStorage.getItem('sttSilenceMs');
+  if (stored !== null) {
+    const parsed = Number(stored);
+    if (!isNaN(parsed) && parsed >= 300 && parsed <= 5000) {
+      silenceDurationMs = parsed;
+    }
+  }
+  silenceSlider.value = String(silenceDurationMs);
+})();
+
 updateModeUI();
 updateTopbar();
 connect();
