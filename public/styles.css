@@ -223,6 +223,14 @@ body {
   word-break: break-word;
 }
 
+/* Refined translation error notice */
+.refined-error {
+  margin: 2px 0 4px;
+  font-size: 12px;
+  color: var(--hint);
+  font-style: italic;
+}
+
 /* Draft card styling */
 .card.draft .src {
   font-style: italic;
