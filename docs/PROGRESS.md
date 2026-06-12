@@ -6,7 +6,7 @@
 
 最後更新：2026-06-12
 
-**所在階段**：Phase 1 完成，等待使用者實測
+**所在階段**：Phase 2 實裝完成，等待使用者實測
 **怎麼跑**：使用者 PowerShell `npm start`（port 3100，.env 已設定）→ http://localhost:3100
 
 **整體 Checklist**：
@@ -17,13 +17,16 @@
 - [x] GA 協定修正 + STT 精度參數化（STT_MODEL/STT_DELAY/降噪/術語 prompt）
 - [x] 繁體保證（OpenCC）/ 翻譯 provider 可換（openai/anthropic/custom）/ 斷句滑桿（預設 2s）
 - [x] Manual 模式講完才顯示（draft 抑制 + 原文翻譯同步渲染）
-- [ ] **使用者實測 commit 40646df 的三項功能 ← 現在卡在這**
-- [ ] Zeabur 連動部署（server ID 見下方 git/Zeabur 紀錄；需注入 OPENAI_API_KEY + STT_*/TRANSLATE_* 環境變數）
-- [ ] Phase 2：Route B 精準翻譯、Glossary、PostgreSQL（⚠️ schema 必須按 (source_lang, target_lang) 語言對設計，PRD §9.4）
+- [x] Phase 1 實測及問題修正（精度參數化、供應商抽象、多語言對 Roadmap）
+- [x] Phase 2：Route B 精準翻譯、Glossary、PostgreSQL（D-012 決策定案，schema 按 (source_lang, target_lang) 語言對設計）
+- [x] PROTOCOL.md 擴充（WS settings/refined 訊息、DB schema、REST API、管理頁）
+- [x] DECISIONS.md D-012 Phase 2 架構決策
+- [ ] **使用者實測 Phase 2（需先在 Zeabur 建 PG、填 DATABASE_URL、測試 Route B/Glossary） ← 現在卡在這**
+- [ ] Zeabur 連動部署（server ID 見下方 git/Zeabur 紀錄；需注入 OPENAI_API_KEY + STT_*/TRANSLATE_* + DATABASE_URL 環境變數）
 - [ ] Phase 3：韓文 + 語言對雙選單（PRD §7.10）
 
-**下一步**：等實測回饋 → 修問題或進 Zeabur 部署
-**注意事項**：開發用 workflow 模式且 subagent 要做模型分配（CLAUDE.md Development conventions）；OPENAI_API_KEY 在使用者本機 .env，永不經過對話。
+**下一步**：(1) 使用者在 Zeabur 建 PostgreSQL service；(2) 本機 .env 補 DATABASE_URL 與 REFINE_MODEL；(3) 實測 Route B 精準翻譯 + Glossary 頁面 → (4) 問題修正後部署到 Zeabur
+**注意事項**：開發用 workflow 模式且 subagent 要做模型分配（CLAUDE.md Development conventions）；OPENAI_API_KEY 與 DATABASE_URL 在使用者本機 .env，永不經過對話。
 
 ---
 
@@ -140,3 +143,26 @@
 **下一步**：
 - 使用者實測 commit 40646df 的三項功能
 - 實測 OK → Zeabur 部署 → Phase 2（Route B、Glossary、PostgreSQL — schema 按語言對設計）
+
+## 2026-06-12 — Phase 2 架構文件定案
+
+**完成**：
+- **PROTOCOL.md 擴充**：
+  - 新增 WS 訊息：C→S `settings` 訊息（refined 開關）、S→C `refined` 訊息（第三行精準翻譯）
+  - 環境變數表補充：`DATABASE_URL`（Zeabur PG 連線，無值時 DB 功能停用）、`REFINE_MODEL`（精準翻譯模型，獨立可調）
+  - 新增 §7「資料庫 Schema」：三表 `glossary_terms`（術語表）、`translation_logs`（翻譯日誌）、`sessions`（session 日誌），各表標註語言對一級欄位原則
+  - 新增 §8「REST API 端點」：`GET /api/glossary`（查詢）、`POST /api/glossary`（新增）、`DELETE /api/glossary/:id`（刪除）
+  - 新增 §9「管理頁面」：`/glossary.html` Glossary 管理頁功能說明（表格、搜尋、新增、編輯、刪除、導出）
+- **DECISIONS.md 新增 D-012**：Phase 2 架構決策
+  - (a) DB Graceful Degrade：無 DATABASE_URL 時翻譯照常進行、Glossary 停用（部署彈性 + 離線可用）
+  - (b) Route B 沿用 provider 抽象、REFINE_MODEL 獨立可調（不同 provider 可混搭）
+  - (c) Glossary 以 (source_lang, target_lang) 語言對為一級欄位，原文包含比對，支援任意語言組合
+  - (d) Pre-roll 400ms 環形緩衝僅用於 Auto 模式（捕捉麥克風啟動後立即發音），Manual 模式無 pre-roll
+- **PROGRESS.md 覆寫頂部狀態**：Phase 2 實裝完成、現在卡在「使用者實測 Phase 2」、下一步 Zeabur 部署
+
+**目前狀態**：文件完整、決策確認，等待使用者實測
+
+**下一步**：
+- 使用者在 Zeabur 建 PostgreSQL service
+- 本機 .env 補 DATABASE_URL 與 REFINE_MODEL，實測 Route B + Glossary
+- 實測 OK 後進行 Zeabur 連動部署

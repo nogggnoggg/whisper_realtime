@@ -38,6 +38,11 @@ const MAX_UTTERANCE_MS = 20_000;     // hard cutoff
 const COOLDOWN_MS = 300;             // minimum gap between auto utterances
 const PCM_FLUSH_INTERVAL_MS = 20;   // how often worklet flushes PCM (informational)
 
+// Pre-roll buffer: keeps the last ~400 ms of PCM so that sentence-initial
+// words are not clipped when Auto mode threshold is crossed.
+const PREROLL_TARGET_MS = 400;      // desired amount of audio to prepend
+const PREROLL_MAX_MS   = 500;       // ring-buffer ceiling (older chunks dropped)
+
 // dB ↔ % conversion (linear mapping: dB = -50 + pct * 0.5)
 function pctToDb(pct) {
   return -50 + pct * 0.5;
@@ -89,6 +94,12 @@ export class AudioPipeline {
 
     // Whether we are currently streaming (have sent audio.start, not yet audio.stop)
     this._streaming = false;
+
+    // Pre-roll ring buffer (auto mode only).
+    // Holds Int16Array chunks covering the last PREROLL_MAX_MS of PCM.
+    // Flushed to WS at the start of each auto-mode utterance.
+    this._prerollBuffer = [];   // Array<Int16Array>
+    this._prerollMs     = 0;    // cumulative duration of stored chunks (ms)
   }
 
   // -------------------------------------------------------------------------
@@ -154,6 +165,9 @@ export class AudioPipeline {
     if (this._mode === mode) return;
     this._stopUtterance();
     this._mode = mode;
+    // Discard stale pre-roll data accumulated under the previous mode
+    this._prerollBuffer = [];
+    this._prerollMs     = 0;
     if (this._state !== 'idle') {
       this._setState('standby');
     }
@@ -241,6 +255,14 @@ export class AudioPipeline {
     this._wsSend(JSON.stringify({ type: 'audio.start', mode }));
     this._setState('listening');
 
+    // Pre-roll (Auto mode only): send buffered audio BEFORE the first live
+    // chunk so that sentence-initial words are not clipped.
+    // Order of frames on the wire:
+    //   audio.start  →  [pre-roll chunk 0 … chunk N-1]  →  live chunks …
+    if (mode === 'auto') {
+      this._flushPrerollToWs();
+    }
+
     // 20-second hard cutoff
     this._maxUtteranceTimer = setTimeout(() => {
       if (this._streaming) {
@@ -327,6 +349,12 @@ export class AudioPipeline {
   // -------------------------------------------------------------------------
 
   _handlePcm(int16Array) {
+    // Always maintain the pre-roll ring buffer (auto mode only; no-op for
+    // manual mode — see _addToPreroll).  This runs whether or not we are
+    // currently streaming so that the ~400 ms window is ready on the next
+    // threshold trigger, including during cooldown periods.
+    this._addToPreroll(int16Array);
+
     if (!this._streaming) return;
     if (!this._wsReady()) {
       // WS dropped mid-utterance — abort
@@ -336,6 +364,49 @@ export class AudioPipeline {
     }
     // Send raw ArrayBuffer as binary WebSocket frame
     this._wsSend(int16Array.buffer);
+  }
+
+  // -------------------------------------------------------------------------
+  // Private helpers — pre-roll ring buffer
+  // -------------------------------------------------------------------------
+
+  /**
+   * Append a PCM chunk to the pre-roll ring buffer (auto mode only).
+   * Trims the oldest chunks when the buffer exceeds PREROLL_MAX_MS.
+   * Called on EVERY incoming PCM chunk regardless of streaming state.
+   *
+   * @param {Int16Array} chunk — resampled 24 kHz PCM16 chunk from the worklet
+   */
+  _addToPreroll(chunk) {
+    // Pre-roll is only needed for auto mode; skip entirely for manual mode.
+    if (this._mode !== 'auto') return;
+
+    const chunkMs = (chunk.length / TARGET_SAMPLE_RATE) * 1000;
+    this._prerollBuffer.push(chunk);
+    this._prerollMs += chunkMs;
+
+    // Evict oldest chunks until we are within the ceiling.
+    // Keep at least one chunk so the buffer is never left empty after a push.
+    while (this._prerollMs > PREROLL_MAX_MS && this._prerollBuffer.length > 1) {
+      const removed = this._prerollBuffer.shift();
+      this._prerollMs -= (removed.length / TARGET_SAMPLE_RATE) * 1000;
+    }
+  }
+
+  /**
+   * Send every chunk currently in the pre-roll buffer to the WebSocket
+   * (oldest first), then clear the buffer.
+   *
+   * Called by _startUtterance immediately after audio.start is sent so that
+   * pre-roll frames arrive at the server before any live frames.
+   */
+  _flushPrerollToWs() {
+    for (const chunk of this._prerollBuffer) {
+      // WebSocket.send() copies the ArrayBuffer — the stored reference stays valid.
+      this._wsSend(chunk.buffer);
+    }
+    this._prerollBuffer = [];
+    this._prerollMs     = 0;
   }
 
   // -------------------------------------------------------------------------
@@ -382,5 +453,9 @@ export class AudioPipeline {
     }
     this._streaming = false;
     this._state = 'idle';
+
+    // Discard pre-roll buffer
+    this._prerollBuffer = [];
+    this._prerollMs     = 0;
   }
 }

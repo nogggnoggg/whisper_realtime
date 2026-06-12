@@ -75,6 +75,7 @@ function connect() {
     wsConnected = true;
     reconnectDelay = 1000;
     updateTopbar();
+    sendSettings();
     if (ap) {
       // Reconnect: hot-swap the WebSocket reference; keep existing mic/AudioContext
       ap.setWs(ws);
@@ -103,6 +104,15 @@ function connect() {
     console.error('[app] WS error:', e);
     // onclose will fire next; nothing else needed here
   };
+}
+
+/**
+ * Send current refined setting to server (Phase 2 WS protocol).
+ */
+function sendSettings() {
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({ type: 'settings', refined: refinedOn }));
+  }
 }
 
 function scheduleReconnect() {
@@ -176,6 +186,7 @@ function handleServerMessage(msg) {
     case 'draft':       handleDraft(msg);        break;
     case 'final':       handleFinal(msg);        break;
     case 'translation': handleTranslation(msg);  break;
+    case 'refined':     handleRefined(msg);      break;
     case 'error':       handleServerError(msg);  break;
     default:
       console.warn('[app] Unknown message type:', msg.type);
@@ -197,6 +208,46 @@ function handleServerError(msg) {
   console.error('[app] Server error:', msg.message);
   topbarStatusPill.className = 'pill err';
   topbarStatusPill.textContent = msg.message || 'Error';
+}
+
+/**
+ * Handle refined message (Phase 2 Route B): append or update the refined
+ * translation line and [Refined] badge on the matching card.
+ * The card is always already rendered (refined arrives after translation).
+ * @param {{itemId:string, text:string}} msg
+ */
+function handleRefined(msg) {
+  const el = cardsContainer.querySelector('[data-item-id="' + msg.itemId + '"]');
+  if (!el) return;
+  const body = el.querySelector('.card-body');
+  if (!body) return;
+
+  // Add or update the .refined paragraph (re-send → update text)
+  let refinedEl = body.querySelector('.refined');
+  if (refinedEl) {
+    refinedEl.textContent = '精準翻譯：' + msg.text;
+  } else {
+    refinedEl = document.createElement('p');
+    refinedEl.className = 'refined';
+    refinedEl.textContent = '精準翻譯：' + msg.text;
+    // Insert before the first badge, or append if no badge yet
+    const firstBadge = body.querySelector('.badge');
+    if (firstBadge) {
+      body.insertBefore(refinedEl, firstBadge);
+    } else {
+      body.appendChild(refinedEl);
+    }
+  }
+
+  // Add [Refined] badge only once
+  if (!body.querySelector('.b-rf')) {
+    const badge = document.createElement('span');
+    badge.className = 'badge b-rf';
+    badge.textContent = 'Refined';
+    body.appendChild(badge);
+  }
+
+  scrollToBottomIfNeeded();
 }
 
 // ── Card Management ─────────────────────────────────────────────────────────
@@ -421,6 +472,7 @@ function setMode(newMode) {
     isSpeaking = false;
   }
   mode = newMode;
+  localStorage.setItem('sttMode', mode);
   if (ap) ap.setMode(mode);
   updateModeUI();
   updateTopbar();
@@ -507,6 +559,7 @@ thresholdSlider.addEventListener('input', function() {
   thresholdValEl.textContent = thresholdPct + '%';
   // Threshold mark position = pct% from left
   thresholdMark.style.left = thresholdPct + '%';
+  localStorage.setItem('sttThresholdPct', String(thresholdPct));
   if (ap) ap.setThreshold(thresholdPct);
   updateTopbar();
 });
@@ -540,7 +593,9 @@ topbarRefinedPill.addEventListener('keydown', function(e) {
 
 function toggleRefined() {
   refinedOn = !refinedOn;
+  localStorage.setItem('sttRefinedOn', String(refinedOn));
   updateTopbar();
+  sendSettings();
 }
 
 // ── Topbar rendering ────────────────────────────────────────────────────────
@@ -596,16 +651,40 @@ function updateTopbar() {
 
 // ── Bootstrap ───────────────────────────────────────────────────────────────
 
-// Restore silence duration from localStorage
+// Restore persisted audio settings from localStorage
 (function() {
-  const stored = localStorage.getItem('sttSilenceMs');
-  if (stored !== null) {
-    const parsed = Number(stored);
+  // Silence duration (existing pattern)
+  const storedSilence = localStorage.getItem('sttSilenceMs');
+  if (storedSilence !== null) {
+    const parsed = Number(storedSilence);
     if (!isNaN(parsed) && parsed >= 300 && parsed <= 5000) {
       silenceDurationMs = parsed;
     }
   }
   silenceSlider.value = String(silenceDurationMs);
+
+  // Threshold %
+  const storedThreshold = localStorage.getItem('sttThresholdPct');
+  if (storedThreshold !== null) {
+    const parsed = Number(storedThreshold);
+    if (!isNaN(parsed) && parsed >= 0 && parsed <= 100) {
+      thresholdPct = parsed;
+    }
+  }
+  thresholdSlider.value = String(thresholdPct);
+  thresholdMark.style.left = thresholdPct + '%';
+
+  // Mode — set variable directly; AP not created yet, updateModeUI() applies UI
+  const storedMode = localStorage.getItem('sttMode');
+  if (storedMode === 'auto' || storedMode === 'manual') {
+    mode = storedMode;
+  }
+
+  // Refined ON/OFF
+  const storedRefined = localStorage.getItem('sttRefinedOn');
+  if (storedRefined !== null) {
+    refinedOn = storedRefined === 'true';
+  }
 })();
 
 updateModeUI();

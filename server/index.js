@@ -19,8 +19,21 @@ import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { OpenAISTTSession } from './openai-stt.js';
 import { translate } from './translate.js';
+import { refine } from './refine.js';
 import { detectLang } from './lang.js';
 import { toTraditional } from './zh-convert.js';
+import {
+  isDbEnabled,
+  initDb,
+  createSession,
+  endSession,
+  insertLog,
+  findGlossaryTerms,    // exported for route-b agent consumption
+  updateLogRefined,     // exported for route-b agent consumption
+  listGlossaryTerms,
+  createGlossaryTerm,
+  updateGlossaryTerm,
+} from './db.js';
 
 // ── Config ──────────────────────────────────────────────────────────────────
 
@@ -43,7 +56,77 @@ if (!API_KEY) {
 // ── HTTP server ──────────────────────────────────────────────────────────────
 
 const app = express();
+app.use(express.json());
 app.use(express.static(join(__dirname, '..', 'public')));
+
+// ── REST API：詞彙表 ──────────────────────────────────────────────────────────
+
+/** DB 停用時回 503 */
+const requireDb = (req, res, next) => {
+  if (!isDbEnabled()) {
+    return res.status(503).json({ error: 'database disabled' });
+  }
+  next();
+};
+
+/**
+ * GET /api/glossary
+ * Query params: source_lang（可選）、target_lang（可選）
+ * 回傳全部詞條；有帶 query 時依語言對過濾。
+ */
+app.get('/api/glossary', requireDb, async (req, res) => {
+  try {
+    const rows = await listGlossaryTerms(req.query.source_lang, req.query.target_lang);
+    res.json(rows);
+  } catch (err) {
+    console.error('[GET /api/glossary]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * POST /api/glossary
+ * Body: { source_lang, target_lang, source_term, target_term, enabled? }
+ */
+app.post('/api/glossary', requireDb, async (req, res) => {
+  const { source_lang, target_lang, source_term, target_term, enabled } = req.body ?? {};
+  if (!source_lang || !target_lang || !source_term || !target_term) {
+    return res.status(400).json({
+      error: 'source_lang, target_lang, source_term, target_term 為必填欄位',
+    });
+  }
+  try {
+    const row = await createGlossaryTerm({ source_lang, target_lang, source_term, target_term, enabled });
+    if (!row) return res.status(500).json({ error: '新增失敗' });
+    res.status(201).json(row);
+  } catch (err) {
+    console.error('[POST /api/glossary]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * PUT /api/glossary/:id
+ * Body: { source_term?, target_term?, enabled? }（可部分更新）
+ */
+app.put('/api/glossary/:id', requireDb, async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (!Number.isFinite(id)) {
+    return res.status(400).json({ error: 'id 必須為整數' });
+  }
+  const { source_term, target_term, enabled } = req.body ?? {};
+  if (source_term === undefined && target_term === undefined && enabled === undefined) {
+    return res.status(400).json({ error: '至少須提供 source_term、target_term 或 enabled 其一' });
+  }
+  try {
+    const row = await updateGlossaryTerm(id, { source_term, target_term, enabled });
+    if (!row) return res.status(404).json({ error: '找不到指定詞條' });
+    res.json(row);
+  } catch (err) {
+    console.error('[PUT /api/glossary/:id]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
 
 const httpServer = createServer(app);
 
@@ -60,7 +143,20 @@ wss.on('connection', (clientWs) => {
     active: false,
     /** @type {ReturnType<typeof setTimeout>|null} */
     idleTimer: null,
+    /** DB session id（createSession() 回傳的 UUID，DB 停用時 null） */
+    dbSessionId: /** @type {string|null} */ (null),
+    /** 本段發言的 audio mode（取自 audio.start 的 mode 欄位） */
+    audioMode: /** @type {string|null} */ (null),
+    /** 精準翻譯開關（從 settings 訊息更新） */
+    refinedEnabled: false,
+    /** itemId → DB log id（供 Route B agent 更新精準翻譯用） */
+    logMap: /** @type {Map<string,number>} */ (new Map()),
+    /** 最近 5 段對話上下文，供 Route B 精準翻譯使用 */
+    context: /** @type {Array<{sourceText:string, translation:string}>} */ ([]),
   };
+
+  // 建立 DB session（非阻塞；DB 停用時 id 為 null）
+  createSession().then((id) => { session.dbSessionId = id; }).catch(() => {});
 
   // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -85,7 +181,7 @@ wss.on('connection', (clientWs) => {
     }, IDLE_TIMEOUT_MS);
   };
 
-  /** 清理 STT 連線與計時器 */
+  /** 清理 STT 連線、計時器，並結束 DB session */
   const teardown = () => {
     if (session.idleTimer) {
       clearTimeout(session.idleTimer);
@@ -96,6 +192,12 @@ wss.on('connection', (clientWs) => {
       session.stt = null;
     }
     session.active = false;
+    // 結束 DB session（dbSessionId 置 null 防止重複呼叫）
+    if (session.dbSessionId) {
+      const sid = session.dbSessionId;
+      session.dbSessionId = null;
+      endSession(sid).catch(() => {});
+    }
   };
 
   // ── 初始化 STT session ────────────────────────────────────────────────────
@@ -109,11 +211,11 @@ wss.on('connection', (clientWs) => {
           send({ type: 'draft', itemId, text: toTraditional(text) });
         },
 
-        // final: 轉錄完成 → 偵測語言 → 回 final → 翻譯 → 回 translation
+        // final: 轉錄完成 → 偵測語言 → 回 final → 翻譯 → 回 translation → 寫 log
         onFinal: async (itemId, text) => {
           try {
+            // 空白片段過濾：trim 後為空 → 不送 final、不翻譯、不寫 log，直接略過
             if (!text || text.trim() === '') {
-              // 空轉錄不建卡片
               send({ type: 'status', state: 'ready' });
               return;
             }
@@ -139,9 +241,64 @@ wss.on('connection', (clientWs) => {
 
             // 3. 送出翻譯結果（即使翻譯失敗也送 ready）
             // 英文→中文翻譯結果保底過一次繁體轉換
+            let translationOut = '';
             if (translatedText) {
-              const translationOut = lang === 'en' ? toTraditional(translatedText) : translatedText;
+              translationOut = lang === 'en' ? toTraditional(translatedText) : translatedText;
               send({ type: 'translation', itemId, text: translationOut });
+            }
+
+            // 4. 寫入翻譯 log（DB 停用時為 no-op）
+            //    targetLang 是翻譯目標語言，目前只支援 zh↔en 兩向
+            const targetLang = lang === 'zh' ? 'en' : 'zh';
+
+            // 在寫 log 前先快照上下文（不含本次發言，供 Route B 使用）
+            const contextSnapshot = [...session.context];
+
+            const logId = await insertLog({
+              sessionId:         session.dbSessionId,
+              ts,
+              sourceLang:        lang,
+              targetLang,
+              sourceText:        finalText,
+              rtTranslation:     translationOut,
+              audioMode:         session.audioMode,
+              thresholdPct:      null,   // 前端尚未在 audio.start 傳入，留 null
+              refinementEnabled: session.refinedEnabled,
+            });
+            // 保存 itemId → logId 對應，供 Route B agent 呼叫 updateLogRefined()
+            if (logId != null) {
+              session.logMap.set(itemId, logId);
+            }
+
+            // 5. 更新對話上下文（保留最近 5 段，本次發言在此後才加入）
+            session.context.push({ sourceText: finalText, translation: translationOut });
+            if (session.context.length > 5) session.context.shift();
+
+            // 6. Route B 精準翻譯（若已啟用，非同步執行，不阻塞主流程）
+            if (session.refinedEnabled) {
+              const routeBLogId = logId;
+              (async () => {
+                try {
+                  const glossaryTerms = await findGlossaryTerms(lang, targetLang, finalText);
+                  const refinedRaw = await refine({
+                    sourceText:    finalText,
+                    sourceLang:    lang,
+                    targetLang,
+                    rtTranslation: translationOut,
+                    glossaryTerms,
+                    context:       contextSnapshot,
+                  });
+                  if (!refinedRaw) return;
+                  // 目標語言為中文時過繁體轉換
+                  const refinedOut = targetLang === 'zh' ? toTraditional(refinedRaw) : refinedRaw;
+                  send({ type: 'refined', itemId, text: refinedOut });
+                  if (routeBLogId != null) {
+                    await updateLogRefined(routeBLogId, refinedOut, glossaryTerms);
+                  }
+                } catch (err) {
+                  console.warn('[route-b] 精準翻譯失敗:', err.message);
+                }
+              })();
             }
 
             send({ type: 'status', state: 'ready' });
@@ -204,6 +361,14 @@ wss.on('connection', (clientWs) => {
     }
 
     switch (msg.type) {
+      case 'settings': {
+        // Phase 2 新增：精準翻譯開關（連線後與切換時送）
+        if (typeof msg.refined === 'boolean') {
+          session.refinedEnabled = msg.refined;
+        }
+        break;
+      }
+
       case 'audio.start': {
         if (!session.stt) {
           send({
@@ -212,6 +377,8 @@ wss.on('connection', (clientWs) => {
           });
           return;
         }
+        // 記錄本段發言的觸發模式（manual / auto），供後續 log 使用
+        session.audioMode = typeof msg.mode === 'string' ? msg.mode : null;
         session.active = true;
         send({ type: 'status', state: 'listening' });
         break;
@@ -246,6 +413,13 @@ wss.on('connection', (clientWs) => {
 });
 
 // ── 啟動伺服器 ───────────────────────────────────────────────────────────────
+
+// initDb() 先行，失敗不阻礙啟動（db.js 內部已 catch 並警告）
+try {
+  await initDb();
+} catch (err) {
+  console.warn('[startup] initDb 意外錯誤（非致命）:', err.message);
+}
 
 httpServer.listen(PORT, () => {
   console.log(`Server running → http://localhost:${PORT}`);

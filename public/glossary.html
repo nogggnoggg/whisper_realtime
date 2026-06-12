@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>詞彙表管理 — 工廠雙語即時對話</title>
+  <link rel="stylesheet" href="styles.css" />
+  <style>
+    /* ── Page shell ── */
+    .glossary-app {
+      display: flex;
+      flex-direction: column;
+      width: 100%;
+      max-width: 900px;
+      min-height: 100vh;
+      background: var(--surface);
+      border-left:  .5px solid var(--line);
+      border-right: .5px solid var(--line);
+    }
+
+    /* ── Header ── */
+    .gl-header {
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 11px 16px;
+      background: var(--panel);
+      border-bottom: .5px solid var(--line);
+      font-size: 13px;
+    }
+    .gl-brand {
+      font-weight: 700;
+      font-size: 14px;
+    }
+    .gl-sep { color: var(--hint); }
+    .gl-back {
+      margin-left: auto;
+      color: var(--info-strong);
+      text-decoration: none;
+      font-size: 12.5px;
+      font-weight: 600;
+    }
+    .gl-back:hover { text-decoration: underline; }
+
+    /* ── Main content ── */
+    .gl-content {
+      flex: 1;
+      padding: 20px 16px;
+    }
+
+    /* ── DB error banner ── */
+    .db-error {
+      display: none;
+      background: var(--err-bg);
+      color: var(--err-tx);
+      border: .5px solid #e8c0c0;
+      border-radius: 8px;
+      padding: 12px 16px;
+      margin-bottom: 18px;
+      font-size: 13.5px;
+      font-weight: 500;
+    }
+
+    /* ── Section heading ── */
+    .gl-section-title {
+      font-size: 12.5px;
+      font-weight: 600;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: .04em;
+      margin: 0 0 10px;
+    }
+
+    /* ── Add row card ── */
+    .add-card {
+      background: var(--panel);
+      border: .5px solid var(--line);
+      border-radius: 10px;
+      padding: 14px 16px;
+      margin-bottom: 24px;
+    }
+    .add-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: flex-end;
+    }
+    .add-row select,
+    .add-row input[type="text"] {
+      padding: 7px 10px;
+      border: .5px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      font-size: 13px;
+      font-family: inherit;
+    }
+    .add-row select         { flex: 0 0 auto; min-width: 110px; }
+    .add-row input[type="text"] { flex: 1; min-width: 130px; }
+    .add-row .btn-add {
+      padding: 7px 18px;
+      background: var(--info-strong);
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: background .15s;
+    }
+    .add-row .btn-add:hover   { background: #1571bf; }
+    .add-row .btn-add:active  { background: #0e5aa0; }
+    .add-row .btn-add:disabled {
+      background: #c5c3ba;
+      cursor: not-allowed;
+    }
+
+    /* ── Glossary table ── */
+    .gl-table-wrap {
+      overflow-x: auto;
+    }
+    .gl-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13.5px;
+    }
+    .gl-table th {
+      text-align: left;
+      padding: 8px 10px;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--muted);
+      border-bottom: 1px solid var(--line);
+      white-space: nowrap;
+      background: var(--panel);
+    }
+    .gl-table td {
+      padding: 9px 10px;
+      border-bottom: .5px solid var(--line);
+      vertical-align: middle;
+    }
+    .gl-table tr:last-child td { border-bottom: none; }
+    .gl-table tr:hover td { background: rgba(0,0,0,.022); }
+
+    /* Disabled row */
+    .gl-table tr.row-disabled td:not(.td-actions) {
+      opacity: .45;
+    }
+
+    /* Language pair badge */
+    .lang-badge {
+      font-size: 11.5px;
+      font-weight: 600;
+      padding: 2px 7px;
+      border-radius: 6px;
+      background: var(--info-bg);
+      color: var(--info-tx);
+      white-space: nowrap;
+    }
+
+    /* Status pill */
+    .status-pill {
+      font-size: 11.5px;
+      font-weight: 600;
+      padding: 2px 8px;
+      border-radius: 8px;
+    }
+    .status-pill.enabled  { background: var(--ok-bg);   color: var(--ok-tx);  }
+    .status-pill.disabled { background: var(--panel);    color: var(--hint);   }
+
+    /* Inline edit input */
+    .inline-input {
+      padding: 4px 8px;
+      border: 1.5px solid var(--info-strong);
+      border-radius: 6px;
+      font-size: 13.5px;
+      font-family: inherit;
+      width: 100%;
+      min-width: 90px;
+      background: #fff;
+    }
+    .inline-input:focus { outline: none; box-shadow: 0 0 0 2px rgba(24,95,165,.2); }
+
+    /* Action buttons */
+    .td-actions { white-space: nowrap; }
+    .btn-sm {
+      font-size: 12px;
+      font-weight: 600;
+      padding: 4px 10px;
+      border-radius: 6px;
+      border: .5px solid var(--line);
+      cursor: pointer;
+      background: var(--surface);
+      color: var(--text);
+      transition: background .12s;
+      margin-right: 4px;
+    }
+    .btn-sm:last-child { margin-right: 0; }
+    .btn-sm:hover { background: var(--panel); }
+    .btn-sm.btn-save {
+      background: var(--ok-bg);
+      color: var(--ok-tx);
+      border-color: #9ee0c8;
+    }
+    .btn-sm.btn-save:hover { background: #c0edde; }
+    .btn-sm.btn-cancel { color: var(--muted); }
+    .btn-sm.btn-toggle-off { color: var(--warn-tx); }
+    .btn-sm.btn-toggle-on  { color: var(--ok-tx); }
+
+    /* ── Empty state ── */
+    .empty-state {
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      gap: 14px;
+      padding: 40px 20px;
+      text-align: center;
+      color: var(--hint);
+    }
+    .empty-state p {
+      margin: 0;
+      font-size: 14px;
+    }
+    .btn-load-defaults {
+      padding: 9px 22px;
+      background: var(--surface);
+      border: 1.5px solid var(--info-strong);
+      color: var(--info-strong);
+      border-radius: 8px;
+      font-size: 13.5px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background .15s, color .15s;
+    }
+    .btn-load-defaults:hover {
+      background: var(--info-bg);
+    }
+    .btn-load-defaults:disabled {
+      opacity: .5;
+      cursor: not-allowed;
+    }
+
+    /* ── Loading spinner ── */
+    .loading-row td {
+      text-align: center;
+      color: var(--hint);
+      font-style: italic;
+      padding: 20px;
+    }
+  </style>
+</head>
+<body>
+  <div class="glossary-app">
+
+    <!-- Header -->
+    <header class="gl-header">
+      <span class="gl-brand">詞彙表管理</span>
+      <span class="gl-sep">/</span>
+      <span style="color:var(--muted);font-size:12.5px;">工廠雙語即時對話</span>
+      <a class="gl-back" href="index.html">← 回主畫面</a>
+    </header>
+
+    <!-- Main content -->
+    <main class="gl-content">
+
+      <!-- DB error banner -->
+      <div class="db-error" id="dbError">
+        資料庫未連線（DATABASE_URL 未設定），詞彙表功能不可用。
+      </div>
+
+      <!-- Add term -->
+      <p class="gl-section-title">新增詞條</p>
+      <div class="add-card">
+        <div class="add-row">
+          <select id="addSrcLang" title="來源語言" aria-label="來源語言">
+            <option value="zh">zh / 中文</option>
+            <option value="en">en / English</option>
+            <option value="ko">ko / 한국어</option>
+          </select>
+          <input type="text" id="addSrcTerm" placeholder="原文詞" aria-label="原文詞" />
+          <span style="color:var(--hint);font-size:13px;align-self:center;">→</span>
+          <select id="addTgtLang" title="目標語言" aria-label="目標語言">
+            <option value="en">en / English</option>
+            <option value="zh">zh / 中文</option>
+            <option value="ko">ko / 한국어</option>
+          </select>
+          <input type="text" id="addTgtTerm" placeholder="譯詞" aria-label="譯詞" />
+          <button class="btn-add" id="btnAdd" onclick="addTerm()">新增</button>
+        </div>
+      </div>
+
+      <!-- Terms table -->
+      <p class="gl-section-title">詞條列表</p>
+      <div class="gl-table-wrap">
+        <table class="gl-table">
+          <thead>
+            <tr>
+              <th style="width:110px">語言對</th>
+              <th>原文詞</th>
+              <th>譯詞</th>
+              <th style="width:70px">狀態</th>
+              <th style="width:160px">操作</th>
+            </tr>
+          </thead>
+          <tbody id="glossaryTbody">
+            <tr class="loading-row"><td colspan="5">載入中…</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Empty state (shown by JS when table has 0 data rows) -->
+      <div class="empty-state" id="emptyState">
+        <p>目前沒有詞條。</p>
+        <button class="btn-load-defaults" id="btnLoadDefaults" onclick="loadDefaults()">
+          載入預設工廠術語（9 組）
+        </button>
+      </div>
+
+    </main>
+  </div>
+
+  <script src="glossary.js"></script>
+</body>
+</html>

@@ -174,3 +174,26 @@ Threshold % ↔ dB 對應：0% = -50dB，100% = 0dB，線性對映（60% ≈ -20
 **否決方案與原因**：
 - Phase 1 直接實作：拖慢核心驗證、韓文品質未知數會干擾現有實測
 - 現在就重構語言層但不加韓文：中等成本但無立即收益，留待 Phase 3 一次到位（資料模型原則已預留，技術債可控）
+
+## D-012：Phase 2 架構
+
+**日期**：2026-06-12
+
+**決策**：
+(a) **DB Graceful Degrade**：無 DATABASE_URL 環境變數時，翻譯流程照常進行（Route A 翻譯輸出），Glossary 與 Translation Logs 功能停用（不保存），支援部署彈性與離線可用。(b) **Route B 翻譯層**：沿用 D-010 的翻譯 provider 抽象（openai / anthropic / custom），新增 `REFINE_MODEL` 環境變數獨立指定精準翻譯模型（例 openai provider 時可用 gpt-4o 代替 gpt-5-mini），允許不同 provider 組合（Route A: gpt-5-mini, Route B: claude-opus-4）；Route B 邏輯：原文 + Route A 翻譯 + Glossary 術語 + 上下文 → 語意重整。(c) **Glossary 查詢設計**：以 `(source_lang, target_lang)` 語言對為一級欄位（支援任意語言組合），原文包含比對（source_term LIKE '%原文%'），供 Route B 與日誌查詢使用。(d) **Pre-roll 環形緩衝**：新增 400ms 環形緩衝，僅用於 Auto 模式（捕捉開啟麥後立即發音），Manual 模式無 pre-roll；不佔用 utterance 時長，只作音訊串流起點優化。
+
+**理由**：
+- (a) 部署的靈活性：使用者可先不配 PG，程式仍可跑；分階段部署（翻譯功能 → 數據持久化）
+- (b) 不同模型成本差異大（gpt-5-mini 便宜、gpt-4o 精準），Route B 應獨立可調，避免鎖定一種模型；provider 抽象已在 D-010 投入，複用成本低
+- (c) 語言對一級設計為 Phase 3（韓文）做準備，現在寫進 schema 成本為零；原文包含比對能適應術語變異（簡繁、詞序調整）
+- (d) Auto 模式麥克風啟動到使用者發音間隔短（50-200ms），400ms 環形緩衝無損用戶體感且捕捉遺漏音；Manual 模式使用者已按按鈕，無須提前錄製
+
+**已知 DB Graceful Degrade 邊界**：
+- Route A（翻譯）不依賴 DB，正常進行
+- Route B（精準翻譯）若無 DB 則無 Glossary 可用，仍可用 (Route A + 原文) 做重整，品質降級但不中斷
+- `/api/glossary` 與 `/glossary.html` 管理頁須 DATABASE_URL 非空才可用（API 回傳 503 或 404）
+
+**否決方案與原因**：
+- DB 必填：運維成本高，不適合快速迭代部署
+- Pre-roll 用於 Manual 模式：對話流不符，Manual 是使用者主動按鍵，不需預先錄製
+- Glossary 以術語對 (source_term, target_term) 為主鍵：無法支援多語言（同一中文術語對應不同韓文譯法），難以查詢

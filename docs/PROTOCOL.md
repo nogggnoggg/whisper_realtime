@@ -63,6 +63,15 @@ ws://host/ws
 
 - 通知後端本段發言結束，後端將觸發最終轉錄與翻譯流程。
 
+### 3.4 精準翻譯開關
+
+```json
+{"type": "settings", "refined": true}
+{"type": "settings", "refined": false}
+```
+
+- `refined`：布林值，是否啟用 Route B 精準翻譯（第三行）。可隨時切換，影響後續發言。
+
 ---
 
 ## 4. Server → Client 訊息
@@ -120,7 +129,17 @@ ws://host/ws
 - 與 `final` 訊息的 `itemId` 對應。
 - 前端根據 `final.lang` 決定翻譯文字顯示在第幾行。
 
-### 4.5 錯誤通知
+### 4.5 精準翻譯結果（Route B，選擇性）
+
+```json
+{"type": "refined", "itemId": "item_abc123", "text": "Do not ship this batch. Await QA confirmation."}
+```
+
+- 僅當精準翻譯開啟且啟用 REFINE_MODEL 時發送。
+- 對應 `final` 的 `itemId`。
+- 前端在第三行顯示「精準翻譯：」加此文本。
+
+### 4.6 錯誤通知
 
 ```json
 {"type": "error", "message": "OpenAI API 連線失敗"}
@@ -217,8 +236,15 @@ Standby（不送音訊）
 | `TRANSLATE_BASE_URL` | 自訂翻譯端點基礎 URL（provider=custom 用，須相容 OpenAI 格式） | — |
 | `TRANSLATE_API_KEY` | 自訂翻譯端點 API 金鑰（provider=custom 用） | — |
 | `SILENCE_DURATION` | Auto 模式無音時停止錄音持續時間（毫秒） | `2000` |
+| `DATABASE_URL` | PostgreSQL 連線字串（Zeabur PG 或自行部署，例 `postgresql://user:pass@host:5432/db`） | — |
+| `REFINE_MODEL` | 精準翻譯模型，沿用 TRANSLATE_PROVIDER（例 openai 時為 `gpt-4o` 等），無值時 Route B 停用 | — |
 
 載入方式：`dotenv`，`.env` 檔不進 git。
+
+**DATABASE_URL 說明**：
+- 若不填或為空，資料庫功能停用（Glossary、Translation Logs 無法保存），但翻譯流程正常運作。
+- 填入時自動啟用 Glossary 記錄、Session 日誌等 Phase 2 功能。
+- Zeabur PostgreSQL service 自動注入 `DATABASE_URL` 環境變數。
 
 #### 6.6.1 STT 參數詳細說明（實測 2026-06-12）
 
@@ -285,7 +311,133 @@ Standby（不送音訊）
 
 ---
 
-## 7. 注意事項
+## 7. 資料庫 Schema（Phase 2，DATABASE_URL 啟用時）
+
+### 7.1 Glossary 術語表
+
+**表名**：`glossary_terms`
+
+| 欄位 | 型別 | 說明 |
+|---|---|---|
+| `id` | UUID / BIGINT | 主鍵 |
+| `source_lang` | varchar(5) | 來源語言代碼（例 `"zh"`、`"en"`、`"ko"`） |
+| `target_lang` | varchar(5) | 目標語言代碼 |
+| `source_term` | TEXT | 原文術語 |
+| `target_term` | TEXT | 譯文術語 |
+| `category` | varchar(50) | 分類（例 `"equipment"`、`"process"`、`"quality"`） |
+| `notes` | TEXT | 備註 |
+| `created_at` | TIMESTAMP | 建立時間 |
+| `updated_at` | TIMESTAMP | 最後修改時間 |
+
+**複合主鍵**：`(source_lang, target_lang, source_term)` 唯一。
+
+**語言對一級欄位原則**：每筆術語必須明確指定 source_lang 與 target_lang，支援任意語言對（zh↔en、zh↔ko、en↔ko 等），為 Phase 3 多語言擴充奠基。
+
+### 7.2 翻譯日誌
+
+**表名**：`translation_logs`
+
+| 欄位 | 型別 | 說明 |
+|---|---|---|
+| `id` | UUID / BIGINT | 主鍵 |
+| `session_id` | varchar(50) | Session 識別碼 |
+| `item_id` | varchar(50) | 發言識別碼（WS itemId） |
+| `source_lang` | varchar(5) | 原文語言 |
+| `target_lang` | varchar(5) | 目標語言 |
+| `source_text` | TEXT | 原文轉錄 |
+| `route_a_text` | TEXT | Route A 翻譯結果 |
+| `route_b_text` | TEXT | Route B 精準翻譯結果（若啟用） |
+| `glossary_matched` | JSONB / TEXT | 本次匹配到的 Glossary 術語列表 |
+| `created_at` | TIMESTAMP | 記錄時間 |
+
+**語言對一級欄位原則**：source_lang + target_lang 必填，支援多語言查詢。
+
+### 7.3 Session 日誌
+
+**表名**：`sessions`
+
+| 欄位 | 型別 | 說明 |
+|---|---|---|
+| `id` | UUID / varchar(50) | 主鍵（與 WS session_id 對應） |
+| `user_ip` | inet / varchar(45) | 使用者 IP |
+| `started_at` | TIMESTAMP | Session 開始時間 |
+| `ended_at` | TIMESTAMP | Session 結束時間（NULL = 進行中） |
+| `utterance_count` | INT | 本 session 發言數 |
+| `total_audio_duration_sec` | FLOAT | 累計音訊時長（秒） |
+| `source_lang_stats` | JSONB / TEXT | 語言發言統計（例 `{"zh": 5, "en": 3}`） |
+
+---
+
+## 8. REST API 端點（Phase 2，DATABASE_URL 啟用時）
+
+### 8.1 `/api/glossary` — 術語表查詢與管理
+
+**GET /api/glossary**
+
+查詢術語表。
+
+**查詢參數**：
+- `source_lang`（必填）：來源語言，例 `"zh"`
+- `target_lang`（必填）：目標語言，例 `"en"`
+- `search`（可選）：關鍵詞搜尋（對 source_term 或 target_term 進行 LIKE 比對）
+- `category`（可選）：分類篩選
+
+**回應**：
+```json
+{
+  "results": [
+    {
+      "id": "uuid-123",
+      "source_lang": "zh",
+      "target_lang": "en",
+      "source_term": "隔離區",
+      "target_term": "quarantine area",
+      "category": "facility",
+      "notes": "廢品、不良品隔離所在",
+      "created_at": "2026-06-12T10:00:00Z"
+    }
+  ],
+  "total": 42
+}
+```
+
+**POST /api/glossary** — 新增或更新術語
+
+**Request body**：
+```json
+{
+  "source_lang": "zh",
+  "target_lang": "en",
+  "source_term": "首件檢查",
+  "target_term": "first article inspection",
+  "category": "quality",
+  "notes": "新產線每批開始前的初次檢驗"
+}
+```
+
+**DELETE /api/glossary/:id** — 刪除術語
+
+---
+
+## 9. 管理頁面（Phase 2）
+
+### 9.1 `/glossary.html` — Glossary 管理頁
+
+靜態 HTML + vanilla JS，位置 `public/glossary.html`。
+
+**功能**：
+- 顯示表格：列出所有術語，可依 source_lang / target_lang / category 篩選
+- 搜尋：關鍵詞比對
+- 新增：表單提交新術語至 `/api/glossary`（POST）
+- 編輯：雙擊行編輯，PATCH 提交
+- 刪除：行末刪除按鈕，DELETE 提交
+- 導出：CSV 下載（備份用）
+
+**存取控制**：由 Zeabur 平台層級處理（basic auth / IP 限制），本檔無額外驗證。
+
+---
+
+## 10. 注意事項
 
 - 前端**絕對不保存** `OPENAI_API_KEY`，金鑰僅存於後端環境變數。
 - 音訊 binary frame 只能在 `audio.start` 之後、`audio.stop` 之前發送。
