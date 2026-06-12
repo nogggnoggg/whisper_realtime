@@ -39,12 +39,12 @@
 
 **症狀**：使用者首次載入頁面進入 Auto 模式，麥克風未觸發任何語音串流或 level meter 反應；切至 Manual 模式講一輪後再切回 Auto 模式才恢復正常。
 
-**根因**：瀏覽器 autoplay 政策在頁面載入時 suspend AudioContext，導致 worklet 的 `process()` 方法不執行 → 無法計算 RMS level → `onLevelChange` 事件永不觸發 → 門檻偵測死鎖。完整 codebase 原本無 `resume()` 呼叫。Manual 模式正常的原因是 `manualStart()` 包含 try-catch，隱含有類似 resume 機制。
+**根因**：瀏覽器 autoplay 政策使 AudioContext 建立時處於 suspended，worklet 的 `process()` 不執行 → 不發 level 訊息 → `_handleLevel()` 收不到資料 → Auto 模式門檻偵測永不觸發。全 codebase 原本無任何 `resume()` 呼叫。「切 Manual 按 Speak 後恢復」是因為按鈕點擊（使用者手勢）讓瀏覽器隱式恢復了 context。
 
 **修法三層**：
-1. **Init resume（openai-stt.js）**：constructor 中於初始化 AudioContext 後立即呼叫 `audioContext.resume()`，處理首次載入 suspended 狀態
-2. **setMode + manualStart（audio.js）**：`setMode()` 和 `manualStart()` 中各呼叫 `resumeContext()`，切換模式或開始講話前確保 AudioContext 為 running 狀態
-3. **Pointer gesture fallback（app.js）**：html 元素 once pointerdown 事件呼叫 `resumeContext()`，為最後一道兜底確保使用者觸摸/點擊頁面後 AudioContext 可恢復
+1. **Init resume（audio.js init）**：getUserMedia 成功、worklet 圖接好後立即 `resume()`（Chrome 政策允許「已取得麥克風擷取」的頁面 resume，多數情況首次載入即生效，無需手勢）
+2. **setMode + manualStart（audio.js）**：新增公開方法 `resumeContext()`，在 `setMode()` 與 `manualStart()` 最頂端（guards 之前）呼叫——模式切換與 Speak 都是手勢上下文
+3. **Pointer gesture fallback（app.js）**：`document` 上掛 once `pointerdown` 呼叫 `resumeContext()`，兜底 Safari/iPad 等 init-resume 不生效的環境
 
 **實裝與驗證**：
 - commit 7ac58f3acd3b4c49ba0d5496823817dace374778（feat: Auto mode first-load fix — init resume + resumeContext() + gesture fallback）
