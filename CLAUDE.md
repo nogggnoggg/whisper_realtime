@@ -95,7 +95,11 @@ These two files (`docs/PROGRESS.md`, `docs/DECISIONS.md`) are the authoritative 
 
 ## Development conventions
 
-- **Multi-agent workflows**: every subagent spawned in a workflow must be assigned an explicit model. Use cheap models (Haiku, Sonnet) for mechanical or high-volume tasks (formatting, extraction, summarization); reserve more capable models for reasoning-heavy or judgment tasks.
+- **Multi-agent workflows — model-intelligence allocation is MANDATORY**. When planning any workflow, evaluate each subagent's task difficulty and assign a model per agent. NEVER default all subagents to the smartest model:
+  - Mechanical tasks (transcribing given content, format conversion, edits fully specified in the prompt) → **haiku**
+  - Ordinary coding, file editing against a spec, cross-checking/comparison → **sonnet**
+  - Only deep reasoning / architectural judgment / hard debugging → **opus/fable**
+  - Before launching, show the user an "agent × model × rationale" table so the allocation is visible and challengeable.
 
 ## Scope discipline
 

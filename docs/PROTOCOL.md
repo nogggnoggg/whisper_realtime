@@ -207,8 +207,47 @@ Standby（不送音訊）
 |---|---|---|
 | `OPENAI_API_KEY` | OpenAI API 金鑰（必填） | — |
 | `PORT` | HTTP/WS 伺服器埠號 | `3000` |
+| `STT_MODEL` | 語音識別模型 | `gpt-realtime-whisper` |
+| `STT_DELAY` | 轉錄延遲等級 | `medium` |
+| `STT_NOISE_REDUCTION` | 噪音消除等級 | `near_field` |
+| `STT_PROMPT` | 轉錄提示詞（工廠術語）| （留空使用內建） |
 
 載入方式：`dotenv`，`.env` 檔不進 git。
+
+#### 6.6.1 STT 參數詳細說明（實測 2026-06-12）
+
+**STT_DELAY**
+
+- **欄位路徑**：`session.audio.input.transcription.delay`
+- **合法值**：`minimal`、`low`、`medium`、`high`、`xhigh`
+- **預設值**：`medium`
+- **說明**：控制轉錄延遲 vs 精度的平衡。越高延遲越低但精度越低；反之越高精度越好。工廠環境推薦 `high` 或 `xhigh`。
+- **驗證註記**：API 對非法值回傳 `invalid_value` 錯誤並列出合法值清單。session.updated echo 不含此欄位（服務端驗證但不反映），此行為正常，不代表欄位無效。其他路徑候選（`session.latency`、`session.audio.input.latency` 等）均拒絕 `unknown_parameter`。
+
+**STT_NOISE_REDUCTION**
+
+- **欄位路徑**：`session.audio.input.noise_reduction`
+- **合法值**：`near_field`（近距離麥克風）、`far_field`（遠距離麥克風）、或 `null`（停用）
+- **預設值**：`near_field`
+- **說明**：自動噪音消除強度。工廠環境機械音多，`near_field` 適合固定式麥克風，`far_field` 適合距聲源 1m+ 的麥克風。
+- **驗證註記**：API echo 確認此欄位被接受並原樣回傳：`noise_reduction: { type: 'near_field' }`。`auto` 被拒絕為 `invalid_value`，API 明確告知支援值。
+
+**STT_PROMPT**
+
+- **欄位路徑**：`session.audio.input.transcription.prompt`
+- **適用模型**：僅 `gpt-4o-transcribe` 支援；`gpt-realtime-whisper` 使用時拒絕 `invalid_value`
+- **預設值**：（留空，使用 OpenAI 內建工廠術語庫）
+- **說明**：提示詞範例：`品保 QA、隔離區 quarantine area、停線 stop the line、卡料 material jam、首件檢查 first article inspection` — 可用中英混合。此參數提升轉錄精度，特別是領域術語。
+- **驗證註記**：session.updated echo 確認 prompt 欄位被接受：`transcription: { model: 'gpt-4o-transcribe', language: null, prompt: '...' }`。
+
+**STT_MODEL**
+
+- **可選值**：`gpt-realtime-whisper`、`gpt-4o-transcribe`
+- **預設值**：`gpt-realtime-whisper`（即時性優先，延遲更低）
+- **說明**：
+  - `gpt-realtime-whisper`：低延遲（~200ms），支援 delta 事件串流轉錄，不支援 prompt 提示詞
+  - `gpt-4o-transcribe`：延遲稍高（~500ms），支援 prompt 欄位，精度略高，適合高精度場景（A/B 測試用）
+- **驗證註記**：兩者均可作為 `session.audio.input.transcription.model` 使用，session.updated echo 確認：`transcription: { model: 'gpt-4o-transcribe', ... }`。
 
 ### 6.7 Conversation Card 顯示規則
 
