@@ -68,7 +68,7 @@ const mkManualEl        = /** @type {HTMLElement} */ (document.getElementById('m
 
 // ── WebSocket ───────────────────────────────────────────────────────────────
 function connect() {
-  const url = 'ws://' + location.host + '/ws';
+  const url = (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws';
   ws = new WebSocket(url);
 
   ws.onopen = function() {
