@@ -152,6 +152,14 @@ export class AudioPipeline {
     this._sourceNode = this._audioCtx.createMediaStreamSource(this._stream);
     this._sourceNode.connect(this._workletNode);
 
+    // AudioContext 建立後可能處於 suspended（瀏覽器自動暫停政策）；
+    // 嘗試在此處 resume，若使用者尚未有手勢則可能無效，
+    // 但 resumeContext() 會在後續手勢（setMode / manualStart / pointerdown）再次嘗試。
+    if (this._audioCtx.state === 'suspended') {
+      await this._audioCtx.resume().catch(() => {});
+    }
+    console.debug('[AudioPipeline] AudioContext.state after init resume:', this._audioCtx.state);
+
     this._setState('standby');
   }
 
@@ -161,6 +169,8 @@ export class AudioPipeline {
    * @param {"manual"|"auto"} mode
    */
   setMode(mode) {
+    // 使用者點擊模式切換本身即是手勢機會，先嘗試恢復 AudioContext
+    this.resumeContext();
     if (mode !== 'manual' && mode !== 'auto') return;
     if (this._mode === mode) return;
     this._stopUtterance();
@@ -191,10 +201,23 @@ export class AudioPipeline {
   }
 
   /**
+   * 嘗試將 AudioContext 從 suspended 狀態恢復為 running。
+   * 需在使用者手勢上下文（click、pointerdown 等）呼叫才保證成功；
+   * 其他時機呼叫可能被瀏覽器靜默拒絕，但不會 throw。
+   */
+  resumeContext() {
+    if (this._audioCtx && this._audioCtx.state === 'suspended') {
+      this._audioCtx.resume().catch(() => {});
+    }
+  }
+
+  /**
    * Manual mode: begin utterance.
    * No-op if not in manual mode or already streaming.
    */
   manualStart() {
+    // 使用者按下 Speak 是手勢機會，先嘗試恢復 AudioContext
+    this.resumeContext();
     if (this._mode !== 'manual') return;
     if (this._streaming) return;
     if (this._state === 'idle') return;

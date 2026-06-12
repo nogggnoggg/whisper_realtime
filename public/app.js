@@ -152,6 +152,11 @@ function initAudioPipeline() {
     })
     .then(function(devices) {
       populateMicSelect(devices);
+      // 兜底：若 AudioContext 仍是 suspended（init 時無手勢），
+      // 等下一次使用者觸碰畫面時再 resume（once 確保只觸發一次）。
+      document.addEventListener('pointerdown', function() {
+        if (ap) ap.resumeContext();
+      }, { once: true });
     })
     .catch(function(err) {
       console.warn('[app] AudioPipeline init/listDevices error:', err);
