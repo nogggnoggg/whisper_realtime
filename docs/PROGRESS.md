@@ -103,3 +103,15 @@
 **已知問題**：
 - OpenCC library 選型待確認（node-opencc 或 opencc-wasm，需驗證 npm 可用性）
 - Anthropic Claude 模型在翻譯場景的成本 vs 品質對比待測
+
+## 2026-06-12 — 多語言對 Roadmap 定案（韓/中/英）
+
+**完成**：
+- PRD v1.2 補多語言對需求：§2.2 目標、§3 非目標、新增 §7.10（兩選單設計、偵測通用化、寫死點備忘、排程）、§9.4 schema 語言對原則、§13 Phase 3 項目
+- DECISIONS.md D-011、CLAUDE.md 同步
+
+**目前狀態**：程式碼不變，繼續 Phase 1 實測（繁體輸出/斷句/翻譯 provider）
+
+**下一步**：
+- 使用者實測 commit 40646df 的三項功能
+- 實測 OK → Zeabur 部署 → Phase 2（Route B、Glossary、PostgreSQL — schema 按語言對設計）

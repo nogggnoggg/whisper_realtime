@@ -66,6 +66,7 @@ Cost rules: Standby streams nothing; only Listening streams; blank/low-confidenc
 - **Display ordering is direction-dependent**: when the speaker is Chinese → line 1 Chinese source, line 2 English translation; when English → line 1 English source, line 2 Chinese translation; line 3 is the optional refined translation. Language direction is auto-detected (see subsection below).
 - **Conversation feed** is a scrolling wall (not a fixed 3-line window): new cards append at the bottom, auto-scroll pauses when the user scrolls up, and a "new messages — jump to latest" affordance appears.
 - **Glossary** lives in PostgreSQL and is applied by Route B for term consistency (e.g. 隔離區 → quarantine area). v1 needs add/edit/disable; approval/versioning/per-line glossaries are later phases.
+- **Language pair is a planned first-class concept (PRD §7.10, decided 2026-06-12).** Korean support arrives in Phase 3 via two language selectors (A ↔ B, each ko/zh/en). Until then: do NOT deepen the zh/en binary assumption in new code — especially Phase 2 DB schemas, where glossary and translation logs MUST key on `(source_lang, target_lang)` with standard codes. Known hardcoded zh/en spots are listed in PRD §7.10 and DECISIONS D-011.
 - A bilingual **safety notice is fixed at the bottom** of the screen.
 
 ### Language direction detection (decided 2026-06-12)

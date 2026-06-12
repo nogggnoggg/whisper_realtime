@@ -151,3 +151,26 @@ Threshold % ↔ dB 對應：0% = -50dB，100% = 0dB，線性對映（60% ≈ -20
 - 簡繁轉換放在前端：複雜化前端邏輯，無法統一管理
 - 翻譯模型硬編碼單一供應商：無法對比測試，難以適應不同部署環境
 - Silence duration 固定不調：現場效果差，無法應對不同工廠環境
+
+## D-011：多語言對策略（韓/中/英）
+
+**日期**：2026-06-12
+
+**決策**：
+未來支援韓文，UI 採**兩個語言選單**（語言 A ↔ 語言 B，各可選 韓文/中文/英文）自由組合互譯方向，不採固定模式列舉。排程：Phase 1–2 不實作；Phase 2 的 PostgreSQL schema（glossary、translation logs）必須以 `(source_lang, target_lang)` 語言對為一級欄位；Phase 3 實作 UI 與韓文偵測/翻譯。詳見 PRD §7.10。
+
+**理由**：
+- Phase 1 目標是驗證核心可行性（延遲/精度/threshold），韓文是廣度功能，且韓文 STT/翻譯品質需獨立驗證
+- zh/en 二元假設若滲入 Phase 2 資料庫設計，Phase 3 需 schema migration — 現在寫進設計原則成本為零
+- 兩選單組合比列舉模式更通用，與「判定發言屬於 A 或 B、翻成另一邊」的偵測抽象天然對應
+
+**已知 zh/en 寫死點（Phase 3 實作備忘）**：
+- `server/lang.js`：CJK 二元偵測（韓文諺文 U+AC00–U+D7AF 會誤判為 en）
+- `server/translate.js`：prompt 僅 zh↔en 兩方向
+- WS 協定 `final.lang`：值域僅 `"zh"|"en"`
+- `server/index.js`：翻譯方向 = 「非 zh 就翻 zh」
+- Top bar：「中文 ↔ English」固定文字
+
+**否決方案與原因**：
+- Phase 1 直接實作：拖慢核心驗證、韓文品質未知數會干擾現有實測
+- 現在就重構語言層但不加韓文：中等成本但無立即收益，留待 Phase 3 一次到位（資料模型原則已預留，技術債可控）
