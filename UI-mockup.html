@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>工廠雙語即時對話系統 — UI 方向確認稿</title>
+<style>
+  :root{
+    --bg:#f5f4ef; --surface:#ffffff; --panel:#f1efe8;
+    --text:#2c2c2a; --muted:#5f5e5a; --hint:#888780; --line:rgba(0,0,0,.12);
+    --info-bg:#e6f1fb; --info-tx:#0c447c; --info-strong:#185fa5;
+    --ok-bg:#e1f5ee; --ok-tx:#0f6e56; --ok-dot:#1d9e75;
+    --warn-bg:#faeeda; --warn-tx:#854f0b; --danger:#a32d2d;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);
+    font-family:-apple-system,"Segoe UI","PingFang TC","Noto Sans TC",sans-serif;
+    line-height:1.6;padding:28px 16px;}
+  .wrap{max-width:760px;margin:0 auto;}
+  h1{font-size:22px;font-weight:600;margin:0 0 4px;}
+  .sub{color:var(--muted);font-size:14px;margin:0 0 28px;}
+  .label{font-size:13px;font-weight:600;color:var(--muted);margin:30px 0 10px;display:flex;align-items:center;gap:8px;}
+  .tag{font-size:11px;font-weight:600;padding:2px 9px;border-radius:8px;background:var(--info-bg);color:var(--info-tx);}
+  .screen{background:var(--surface);border:.5px solid var(--line);border-radius:12px;overflow:hidden;}
+  .topbar{display:flex;flex-wrap:wrap;align-items:center;gap:8px 13px;padding:10px 14px;
+    background:var(--panel);border-bottom:.5px solid var(--line);font-size:12.5px;}
+  .sep{color:var(--hint);}
+  .pill{padding:2px 8px;border-radius:8px;font-weight:600;}
+  .pill.ok{background:var(--ok-bg);color:var(--ok-tx);}
+  .pill.info{background:var(--info-bg);color:var(--info-tx);}
+  .dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--ok-dot);vertical-align:1px;margin-right:4px;}
+  .feed{padding:12px 14px;}
+  .feedtitle{margin:0 0 10px;font-size:13px;font-weight:600;color:var(--muted);}
+  .card{display:flex;gap:10px;padding:10px 0;border-bottom:.5px solid var(--line);}
+  .card:last-child{border-bottom:none;}
+  .ts{font-size:12px;color:var(--hint);min-width:38px;font-variant-numeric:tabular-nums;}
+  .src{margin:0 0 3px;font-size:15px;font-weight:600;}
+  .tr{margin:0 0 3px;font-size:14px;color:var(--muted);}
+  .refined{margin:0 0 6px;font-size:14px;color:var(--info-tx);}
+  .draft .src{font-style:italic;font-weight:400;color:var(--muted);}
+  .draft .tr{font-style:italic;color:var(--hint);}
+  .badge{font-size:11px;padding:1px 7px;border-radius:8px;margin-right:4px;display:inline-block;}
+  .b-rt{background:var(--panel);color:var(--muted);}
+  .b-rf{background:var(--info-bg);color:var(--info-tx);}
+  .b-dr{background:var(--warn-bg);color:var(--warn-tx);}
+  .audio{padding:13px 14px;background:var(--panel);border-top:.5px solid var(--line);}
+  .audiohd{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;}
+  .audiohd p{margin:0;font-size:13px;font-weight:600;}
+  .row{display:flex;align-items:center;gap:10px;margin-bottom:10px;}
+  .row label{font-size:12.5px;color:var(--muted);min-width:78px;}
+  .row input[type=range]{flex:1;}
+  .meter{flex:1;height:12px;border-radius:8px;background:#e3e1d8;overflow:hidden;position:relative;}
+  .meter>i{display:block;height:100%;background:var(--ok-dot);}
+  .meter .mark{position:absolute;top:-2px;width:2px;height:16px;background:var(--danger);}
+  .scale{display:flex;justify-content:space-between;font-size:10.5px;color:var(--hint);padding-left:88px;}
+  .modes{display:flex;gap:16px;margin-bottom:12px;font-size:13px;}
+  .modes .on{font-weight:600;} .modes .off{color:var(--hint);}
+  .mk{width:12px;height:12px;border-radius:50%;border:2px solid #bbb;display:inline-block;vertical-align:-2px;margin-right:5px;}
+  .mk.sel{border-color:var(--info-strong);background:var(--info-strong);box-shadow:inset 0 0 0 2px #fff;}
+  .speak{font-size:14px;font-weight:600;padding:8px 22px;border-radius:8px;border:none;}
+  .speak.dis{background:#e3e1d8;color:#a8a69d;cursor:not-allowed;}
+  .speak.on{background:var(--info-strong);color:#fff;cursor:pointer;}
+  .hint{margin:0 0 12px;font-size:12px;color:var(--hint);}
+  .grey{opacity:.4;}
+  select{padding:6px 8px;border:.5px solid var(--line);border-radius:8px;background:#fff;font-size:13px;flex:1;}
+  .safety{padding:9px 14px;background:var(--warn-bg);border-top:.5px solid var(--line);
+    font-size:11.5px;color:var(--warn-tx);line-height:1.5;}
+  .safety .en{padding-left:6px;}
+  .diff{background:var(--surface);border:.5px solid var(--line);border-radius:12px;padding:14px 18px;margin-top:30px;}
+  .diff h3{margin:0 0 8px;font-size:15px;}
+  .diff table{width:100%;border-collapse:collapse;font-size:13px;}
+  .diff td,.diff th{text-align:left;padding:6px 8px;border-bottom:.5px solid var(--line);}
+  .diff th{color:var(--muted);font-weight:600;}
+  .feed{position:relative;}
+  .scroll-hint{position:absolute;bottom:10px;left:50%;transform:translateX(-50%);
+    background:var(--info-bg);color:var(--info-tx);font-size:12px;font-weight:600;
+    padding:4px 12px;border-radius:12px;border:.5px solid rgba(12,68,124,.18);
+    white-space:nowrap;cursor:pointer;box-shadow:0 2px 6px rgba(0,0,0,.08);}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>工廠內部雙語即時對話系統</h1>
+  <p class="sub">UI 方向確認稿 · v1.1 · 此為 mockup，僅供確認最終畫面方向，非正式程式</p>
+
+  <!-- ===== Auto Detection ===== -->
+  <div class="label">狀態一 <span class="tag">Auto Detection / Always On</span></div>
+  <div class="screen">
+    <div class="topbar">
+      <span style="font-weight:600;">中文 ↔ English</span><span class="sep">|</span>
+      <span>Audio: Always On</span><span class="sep">|</span>
+      <span>Threshold: 60%</span><span class="sep">|</span>
+      <span class="pill ok"><span class="dot"></span>正常 Normal</span><span style="font-size:11px;color:var(--hint);margin-left:-4px;" title="運行時此 pill 輪替三態：Standby → Listening → Ending">（Standby / Listening / Ending）</span><span class="sep">|</span>
+      <span class="pill info">精準翻譯 ON</span><span class="sep">|</span>
+      <span>Line A</span>
+      <span style="margin-left:auto;">⚙ 設定</span>
+    </div>
+    <div class="feed">
+      <p class="feedtitle">對話紀錄　Conversation Feed</p>
+      <div class="card">
+        <span class="ts">10:29</span>
+        <div>
+          <p class="src">這批先不要出貨，等品保確認。</p>
+          <p class="tr">Do not ship this batch yet. Wait for QA.</p>
+          <p class="refined">精準翻譯：Do not ship this batch yet. Wait for QA to confirm first.</p>
+          <span class="badge b-rt">RT</span><span class="badge b-rf">Refined</span>
+        </div>
+      </div>
+      <div class="card">
+        <span class="ts">10:30</span>
+        <div>
+          <p class="src">Should I move it to the quarantine area?</p>
+          <p class="tr">我要把它移到隔離區嗎？</p>
+          <span class="badge b-rt">RT</span>
+        </div>
+      </div>
+      <div class="card draft">
+        <span class="ts">10:33</span>
+        <div>
+          <p class="src">[暫定] 可以，但要先貼標籤…</p>
+          <p class="tr">[Draft] Yes, but label it first…</p>
+          <span class="badge b-dr">Draft</span>
+        </div>
+      </div>
+      <div class="scroll-hint">↓ 有新對話，點擊回到最新</div>
+    </div>
+    <div class="audio">
+      <div class="audiohd">
+        <p>Audio Settings</p>
+        <button class="speak dis" disabled>🎙 Speak</button>
+      </div>
+      <div class="modes">
+        <span class="on"><span class="mk sel"></span>Always On</span>
+        <span class="off"><span class="mk"></span>Manual Speak</span>
+      </div>
+      <div class="row"><label>Threshold</label><input type="range" min="0" max="100" value="60"><span style="font-size:12.5px;font-weight:600;min-width:32px;">60%</span></div>
+      <div class="row"><label>Level Meter</label><div class="meter"><i style="width:48%"></i><span class="mark" style="left:60%"></span></div></div>
+      <div class="scale"><span>-50dB</span><span>-37.5dB</span><span>-25dB</span><span>-12.5dB</span><span>0dB</span></div>
+      <div class="row" style="margin-top:10px;"><label>Microphone</label><select><option>內建麥克風 (Default)</option></select></div>
+    </div>
+    <div class="safety">⚠ 請注意安全，專注工作。避免在機台運轉或危險區域進行長時間對話。<br>
+      <span class="en">For safety, stay focused on your work. Avoid long conversations while machines are operating or in hazardous areas.</span></div>
+  </div>
+
+  <!-- ===== Manual Speak ===== -->
+  <div class="label">狀態二 <span class="tag">Manual Speak</span></div>
+  <div class="screen">
+    <div class="topbar">
+      <span style="font-weight:600;">中文 ↔ English</span><span class="sep">|</span>
+      <span>Audio: Manual</span><span class="sep">|</span>
+      <span class="pill info">Status: Ready</span><span class="sep">|</span>
+      <span class="pill info">精準翻譯 ON</span><span class="sep">|</span>
+      <span>Line A</span>
+      <span style="margin-left:auto;">⚙ 設定</span>
+    </div>
+    <div class="feed">
+      <p class="feedtitle">對話紀錄　Conversation Feed</p>
+      <div class="card">
+        <span class="ts">10:29</span>
+        <div>
+          <p class="src">這批先不要出貨，等品保確認。</p>
+          <p class="tr">Do not ship this batch yet. Wait for QA.</p>
+          <p class="refined">精準翻譯：Do not ship this batch yet. Wait for QA to confirm first.</p>
+          <span class="badge b-rt">RT</span><span class="badge b-rf">Refined</span>
+        </div>
+      </div>
+      <div class="card">
+        <span class="ts">10:30</span>
+        <div>
+          <p class="src">Should I move it to the quarantine area?</p>
+          <p class="tr">我要把它移到隔離區嗎？</p>
+          <span class="badge b-rt">RT</span>
+        </div>
+      </div>
+    </div>
+    <div class="audio">
+      <div class="audiohd">
+        <p>Audio Settings</p>
+        <button class="speak on">🎙 Speak</button>
+      </div>
+      <p class="hint">Click Speak to start speaking.</p>
+      <div class="modes">
+        <span class="off"><span class="mk"></span>Always On</span>
+        <span class="on"><span class="mk sel"></span>Manual Speak</span>
+      </div>
+      <div class="grey">
+        <div class="row"><label>Threshold</label><input type="range" min="0" max="100" value="60" disabled><span style="font-size:12.5px;min-width:32px;">—</span></div>
+        <div class="row"><label>Level Meter</label><div class="meter"></div></div>
+      </div>
+      <div class="row" style="margin-top:10px;"><label>Microphone</label><select><option>內建麥克風 (Default)</option></select></div>
+    </div>
+    <div class="safety">⚠ 請注意安全，專注工作。避免在機台運轉或危險區域進行長時間對話。<br>
+      <span class="en">For safety, stay focused on your work. Avoid long conversations while machines are operating or in hazardous areas.</span></div>
+  </div>
+
+  <div class="diff">
+    <h3>兩個狀態的唯一差異</h3>
+    <table>
+      <tr><th>項目</th><th>Auto Detection</th><th>Manual Speak</th></tr>
+      <tr><td>Speak 按鈕</td><td>灰色 disabled</td><td>藍色可點擊</td></tr>
+      <tr><td>Threshold / Level Meter</td><td>啟用</td><td>灰色 disabled</td></tr>
+      <tr><td>狀態列</td><td>Always On · Threshold · 正常 Normal（Standby / Listening / Ending）</td><td>Manual · Status: Ready</td></tr>
+    </table>
+    <p style="font-size:12.5px;color:var(--muted);margin:10px 0 0;">版面、字型、間距、卡片樣式兩者完全一致。</p>
+  </div>
+</div>
+</body>
+</html>
