@@ -4,7 +4,7 @@
 
 ## 📌 目前狀態（每次更新時覆寫此區塊，不要往下追加）
 
-最後更新：2026-06-13（wss 修復）
+最後更新：2026-06-13（Auto 模式首次載入修復）
 
 **所在階段**：Zeabur 部署完成、自動化測試全過、wss 修復上線、真 key 已填（REFINE_MODEL 使用者改為 gpt-5.5）→ 等線上語音實測
 **怎麼跑**：線上 https://whisper-realtime-leon.zeabur.app ；本機 PowerShell `npm start`（port 3100）→ http://localhost:3100
@@ -23,14 +23,37 @@
 - [x] DECISIONS.md D-012 Phase 2 架構決策
 - [x] Zeabur 部署：PG service + app service（Docker/node:22-alpine）+ 網域 whisper-realtime-leon.zeabur.app（D-013）
 - [x] 修復 HTTPS 下 WS 無限重連（app.js 寫死 ws:// → 依協定選 wss://，commit 4bb21d3）
+- [x] 修復首次進入 Auto 模式不啟動（AudioContext suspended → init resume + resumeContext() 手勢兜底，commit 7ac58f3acd3b4c49ba0d5496823817dace374778）
 - [x] Phase 2 自動化實測（Workflow phase2-deploy-verify）：Glossary REST CRUD 9/9 過、靜態頁/資產 200、WS 握手 OK、PG 持久化確認（id=1 zh/en 隔離區→quarantine zone）
 - [x] 使用者把 Zeabur app 的 OPENAI_API_KEY 換成真 key（並自行把 REFINE_MODEL 改為 gpt-5.5）
 - [ ] **線上語音實測 Route A + Route B 精準翻譯（含 Glossary 術語套用、translation_logs 寫入確認） ← 現在卡在這**
 - [ ] Zeabur 平台層存取保護（basic auth / IP 限制，部署驗證 OK 後設定）
 - [ ] Phase 3：韓文 + 語言對雙選單（PRD §7.10）
 
-**下一步**：(1) 使用者開 https://whisper-realtime-leon.zeabur.app 做線上語音實測（Route A 轉錄/翻譯、Route B 精譯、Glossary：說含「隔離區」的句子應譯出 quarantine zone）；(2) OK 後設 Zeabur 平台層存取保護（basic auth / IP 限制）
+**下一步**：(1) 使用者開 https://whisper-realtime-leon.zeabur.app 做線上語音實測（Route A 轉錄/翻譯、Route B 精譯、Glossary：說含「隔離區」的句子應譯出 quarantine zone；實測時請用無痕視窗確認首次載入 Auto 模式直接可用）；(2) OK 後設 Zeabur 平台層存取保護（basic auth / IP 限制）
 **注意事項**：app 的模型/供應商由 Zeabur 環境變數控制：`TRANSLATE_PROVIDER`（openai/anthropic/custom）、`TRANSLATE_MODEL`、`REFINE_MODEL`、`STT_MODEL`；STT 目前僅 OpenAI 實作，OPENAI_API_KEY 必填。真 key 永不經過對話，由使用者在 Zeabur 後台填。開發用 workflow 模式且 subagent 要做模型分配（CLAUDE.md Development conventions）。
+
+---
+
+## 2026-06-13 — 修復首次進入 Auto 模式不啟動
+
+**症狀**：使用者首次載入頁面進入 Auto 模式，麥克風未觸發任何語音串流或 level meter 反應；切至 Manual 模式講一輪後再切回 Auto 模式才恢復正常。
+
+**根因**：瀏覽器 autoplay 政策在頁面載入時 suspend AudioContext，導致 worklet 的 `process()` 方法不執行 → 無法計算 RMS level → `onLevelChange` 事件永不觸發 → 門檻偵測死鎖。完整 codebase 原本無 `resume()` 呼叫。Manual 模式正常的原因是 `manualStart()` 包含 try-catch，隱含有類似 resume 機制。
+
+**修法三層**：
+1. **Init resume（openai-stt.js）**：constructor 中於初始化 AudioContext 後立即呼叫 `audioContext.resume()`，處理首次載入 suspended 狀態
+2. **setMode + manualStart（audio.js）**：`setMode()` 和 `manualStart()` 中各呼叫 `resumeContext()`，切換模式或開始講話前確保 AudioContext 為 running 狀態
+3. **Pointer gesture fallback（app.js）**：html 元素 once pointerdown 事件呼叫 `resumeContext()`，為最後一道兜底確保使用者觸摸/點擊頁面後 AudioContext 可恢復
+
+**實裝與驗證**：
+- commit 7ac58f3acd3b4c49ba0d5496823817dace374778（feat: Auto mode first-load fix — init resume + resumeContext() + gesture fallback）
+- git push origin main 自動觸發 Zeabur 重建（deployment 6a2c36af1c90559b717b9110 已完成）
+- 驗證結果：passed=true（自動驗證 liveFileOk=true、wssOk=true）；首次載入 Auto 模式直接可用無需模式切換
+
+**Workflow 與模型分配**：本次修復使用者要求 Review 用 fable；未來類似問題優先分配 fable 做根因分析與修法決策
+
+**下一步**：使用者開無痕視窗驗證首次載入 Auto 模式直接可用，再進行線上語音實測
 
 ---
 
