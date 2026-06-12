@@ -217,4 +217,4 @@ Threshold % ↔ dB 對應：0% = -50dB，100% = 0dB，線性對映（60% ≈ -20
 - 開放 PG 對外 TCP 供本機測試：要動 Lightsail 防火牆且暴露資料庫，風險大於收益
 - 等使用者填真 key 再測試：阻塞所有 DB/Glossary 驗證，且該部分根本不需要 OpenAI
 
-**遺留**：git push 是否觸發 Zeabur 自動重建未驗證；重新部署可再呼叫 MCP `deploy-from-specification`（同 spec）。STT 僅 OpenAI 實作，若要「完全去 OpenAI」需另立 STT 供應商抽象工作項。
+**遺留**：git push 會自動觸發 Zeabur 重建（已驗證）。STT 僅 OpenAI 實作，若要「完全去 OpenAI」需另立 STT 供應商抽象工作項。

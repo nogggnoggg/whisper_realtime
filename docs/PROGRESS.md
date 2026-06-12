@@ -4,7 +4,7 @@
 
 ## 📌 目前狀態（每次更新時覆寫此區塊，不要往下追加）
 
-最後更新：2026-06-12（Zeabur 部署完成、Phase 2 自動化實測通過）
+最後更新：2026-06-13（wss 修復）
 
 **所在階段**：已部署 Zeabur 並通過 Glossary/DB/UI/WS 自動化測試，等使用者換真 OPENAI_API_KEY 後做線上語音實測
 **怎麼跑**：線上 https://whisper-realtime-leon.zeabur.app ；本機 PowerShell `npm start`（port 3100）→ http://localhost:3100
@@ -22,6 +22,7 @@
 - [x] PROTOCOL.md 擴充（WS settings/refined 訊息、DB schema、REST API、管理頁）
 - [x] DECISIONS.md D-012 Phase 2 架構決策
 - [x] Zeabur 部署：PG service + app service（Docker/node:22-alpine）+ 網域 whisper-realtime-leon.zeabur.app（D-013）
+- [x] 修復 HTTPS 下 WS 無限重連（app.js 寫死 ws:// → 依協定選 wss://，commit 4bb21d3）
 - [x] Phase 2 自動化實測（Workflow phase2-deploy-verify）：Glossary REST CRUD 9/9 過、靜態頁/資產 200、WS 握手 OK、PG 持久化確認（id=1 zh/en 隔離區→quarantine zone）
 - [ ] **使用者把 Zeabur app 的 OPENAI_API_KEY 佔位值換成真 key ← 現在卡在這（換完服務自動重啟）**
 - [ ] 線上語音實測 Route A + Route B 精準翻譯（含 Glossary 術語套用、translation_logs 寫入確認）
@@ -30,6 +31,29 @@
 
 **下一步**：(1) 使用者在 Zeabur 後台把 app 的 `OPENAI_API_KEY` 換成真 key；(2) 開 https://whisper-realtime-leon.zeabur.app 做線上語音實測（Route A 轉錄/翻譯、Route B 精譯、Glossary 隔離區→quarantine zone 套用）；(3) OK 後設平台層存取保護
 **注意事項**：app 的模型/供應商由 Zeabur 環境變數控制：`TRANSLATE_PROVIDER`（openai/anthropic/custom）、`TRANSLATE_MODEL`、`REFINE_MODEL`、`STT_MODEL`；STT 目前僅 OpenAI 實作，OPENAI_API_KEY 必填。真 key 永不經過對話，由使用者在 Zeabur 後台填。開發用 workflow 模式且 subagent 要做模型分配（CLAUDE.md Development conventions）。
+
+---
+
+## 2026-06-13 — 修復 HTTPS WS 重連問題
+
+**症狀**：Zeabur 部署後，在 HTTPS 頁面（https://whisper-realtime-leon.zeabur.app）開啟會無限「重連中 Reconnecting」，服務無法正常工作。
+
+**根因**：public/app.js:71 硬編碼 `ws://localhost:8080/ws`，HTTPS 頁面載入此程式時被瀏覽器混合內容（mixed content）安全政策阻擋，WebSocket 連線失敗導致自動重連迴圈。
+
+**修法**：修改 public/app.js 第 71 行，改為依 `location.protocol` 動態選擇協定：
+```javascript
+const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+const wsURL = `${protocol}//${location.host}/ws`;
+```
+
+**部署與驗證**：
+- commit 4bb21d3：修正 app.js
+- git push origin main 自動觸發 Zeabur 重建（deployment 6a2c2f0c1c90559b717b8da6 已完成）
+- 驗證結果：passed=true；https://whisper-realtime-leon.zeabur.app 正常載入，WS 連線成功，頁面從「Reconnecting 無限迴圈」恢復為「Status: Ready」
+
+**決策確認**：D-013 遺留項「git push 是否觸發自動重建」已驗證：git push 會自動觸發 Zeabur 重建（無需手動呼叫 MCP）
+
+**下一步**：使用者在 Zeabur 後台把 app 的 OPENAI_API_KEY 換成真 key，再做線上語音實測
 
 ---
 
