@@ -88,11 +88,21 @@ Determined from the finalized transcript text using a character-level heuristic:
 
 Claude Code instances are stateless across sessions. To maintain continuity across context resets, usage-limit stops, and handoffs:
 
-- **On session start**: read `docs/PROGRESS.md` before doing any implementation work. It contains the current state, last completed step, and the planned next action.
+- **On session start**: read the **「📌 目前狀態」 dashboard at the TOP of `docs/PROGRESS.md`** first — it is the at-a-glance status + overall checklist. Read the dated log entries below it (and `docs/DECISIONS.md`) only when you need detail. Do this before any implementation work.
+- **Keep the checklist in sync — mandatory**: ANY roadmap or scope change — including ad-hoc fixes, adjustments, and newly inserted requirements — must update the dashboard (add/check items, refresh 「下一步」, overwrite in place) **in the same turn the work completes, in the same commit as the code**. A stale checklist is a failed handoff.
 - **Major decisions**: write them into `docs/DECISIONS.md` (date, decision, rationale, alternatives considered). The decisions already recorded in this CLAUDE.md file should also be reflected there.
-- **On session end or when approaching usage limits**: before stopping, append the current state, what was just completed, and the explicit next step to `docs/PROGRESS.md` as a dated handoff entry. Do this *before* stopping — do not defer it.
+- **On session end or when approaching usage limits**: before stopping, (1) overwrite the dashboard, (2) append a dated handoff entry (current state, what was just completed, explicit next step) to `docs/PROGRESS.md`. Do this *before* stopping — do not defer it.
 
 These two files (`docs/PROGRESS.md`, `docs/DECISIONS.md`) are the authoritative handoff log. Create them if they do not exist.
+
+## Guardrails for stateless sessions
+
+You do not have the full history of this project — assume prior sessions knew things you don't:
+
+- **Before changing any existing behavior**, check it against `PRD.md` and `docs/DECISIONS.md` — they are the single source of truth. If what you're about to do contradicts a recorded decision, STOP and ask the user; never silently overturn a recorded decision.
+- **Touch only files within the current task's scope.** Do not "fix" or refactor things outside it without asking first.
+- **Code or config you don't understand is a deliberate decision until proven otherwise** (e.g. OpenCC post-processing, the threshold↔dB mapping, Manual-mode pending-final buffering, the `_send` ready-bypass in openai-stt.js). Look it up in DECISIONS.md before treating it as a bug.
+- **When unsure, ask — don't guess.**
 
 ## Development conventions
 

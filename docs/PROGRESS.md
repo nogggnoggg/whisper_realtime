@@ -2,6 +2,31 @@
 
 每次工作 session 結束時追加：完成事項、目前狀態、下一步、已知問題。新 session 開始時先讀此檔。
 
+## 📌 目前狀態（每次更新時覆寫此區塊，不要往下追加）
+
+最後更新：2026-06-12
+
+**所在階段**：Phase 1 完成，等待使用者實測
+**怎麼跑**：使用者 PowerShell `npm start`（port 3100，.env 已設定）→ http://localhost:3100
+
+**整體 Checklist**：
+
+- [x] PRD/mockup 定稿（v1.2）
+- [x] git + GitHub（nogggnoggg/whisper_realtime）
+- [x] Phase 1：UI + Manual/Auto 模式 + Route A（gpt-realtime-whisper → gpt-5-mini）
+- [x] GA 協定修正 + STT 精度參數化（STT_MODEL/STT_DELAY/降噪/術語 prompt）
+- [x] 繁體保證（OpenCC）/ 翻譯 provider 可換（openai/anthropic/custom）/ 斷句滑桿（預設 2s）
+- [x] Manual 模式講完才顯示（draft 抑制 + 原文翻譯同步渲染）
+- [ ] **使用者實測 commit 40646df 的三項功能 ← 現在卡在這**
+- [ ] Zeabur 連動部署（server ID 見下方 git/Zeabur 紀錄；需注入 OPENAI_API_KEY + STT_*/TRANSLATE_* 環境變數）
+- [ ] Phase 2：Route B 精準翻譯、Glossary、PostgreSQL（⚠️ schema 必須按 (source_lang, target_lang) 語言對設計，PRD §9.4）
+- [ ] Phase 3：韓文 + 語言對雙選單（PRD §7.10）
+
+**下一步**：等實測回饋 → 修問題或進 Zeabur 部署
+**注意事項**：開發用 workflow 模式且 subagent 要做模型分配（CLAUDE.md Development conventions）；OPENAI_API_KEY 在使用者本機 .env，永不經過對話。
+
+---
+
 ## 2026-06-12 — 文件定稿
 
 **完成**：
