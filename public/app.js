@@ -32,6 +32,15 @@ let audioState = 'idle';
 /** Feed auto-scroll flag — set false when user scrolls up */
 let autoScroll = true;
 
+/**
+ * Manual 模式：講完才一次顯示「原文+翻譯」。
+ * final 訊息先暫存於此，等對應 translation 到達後一起渲染。
+ * @type {Map<string, {msg: object, timer: number}>} itemId → pending final
+ */
+const pendingFinals = new Map();
+/** 等不到翻譯的保底逾時（ms）：先顯示原文，翻譯之後到再補上 */
+const PENDING_FINAL_TIMEOUT_MS = 12000;
+
 // ── DOM References ──────────────────────────────────────────────────────────
 const feedEl            = /** @type {HTMLElement} */ (document.getElementById('feed'));
 const cardsContainer    = /** @type {HTMLElement} */ (document.getElementById('cards-container'));
@@ -226,6 +235,8 @@ function getOrCreateCard(itemId) {
  * @param {{itemId:string, text:string}} msg
  */
 function handleDraft(msg) {
+  // Manual 模式：講話過程不顯示即時 Draft（PRD §7.8.1 — 講完才處理）
+  if (mode === 'manual') return;
   const el = getOrCreateCard(msg.itemId);
   const srcEl = el.querySelector('.src');
   if (srcEl) {
@@ -239,6 +250,28 @@ function handleDraft(msg) {
  * @param {{itemId:string, text:string, lang:'zh'|'en', ts:string}} msg
  */
 function handleFinal(msg) {
+  // Manual 模式：暫存 final，等翻譯到達後與原文同時顯示
+  if (mode === 'manual') {
+    const timer = window.setTimeout(function() {
+      // 翻譯逾時保底：先顯示原文（翻譯之後到達會走 renderTranslation 補上）
+      const pending = pendingFinals.get(msg.itemId);
+      if (pending) {
+        pendingFinals.delete(msg.itemId);
+        renderFinal(pending.msg);
+      }
+    }, PENDING_FINAL_TIMEOUT_MS);
+    pendingFinals.set(msg.itemId, { msg: msg, timer: timer });
+    if (!isSpeaking) speakHint.textContent = '處理中… Processing';
+    return;
+  }
+  renderFinal(msg);
+}
+
+/**
+ * 實際渲染 final 卡片（原 handleFinal 主體）。
+ * @param {{itemId:string, text:string, lang:'zh'|'en', ts:string}} msg
+ */
+function renderFinal(msg) {
   const el = getOrCreateCard(msg.itemId);
   el.classList.remove('draft');
   el.dataset.lang = msg.lang;
@@ -279,6 +312,24 @@ function handleFinal(msg) {
  * @param {{itemId:string, text:string}} msg
  */
 function handleTranslation(msg) {
+  // Manual 模式暫存中的 final：原文+翻譯一次同時渲染
+  const pending = pendingFinals.get(msg.itemId);
+  if (pending) {
+    clearTimeout(pending.timer);
+    pendingFinals.delete(msg.itemId);
+    renderFinal(pending.msg);
+    if (mode === 'manual' && !isSpeaking) {
+      speakHint.textContent = 'Click Speak to start speaking.';
+    }
+  }
+  renderTranslation(msg);
+}
+
+/**
+ * 實際填入翻譯（原 handleTranslation 主體）。
+ * @param {{itemId:string, text:string}} msg
+ */
+function renderTranslation(msg) {
   const el = cardsContainer.querySelector('[data-item-id="' + msg.itemId + '"]');
   if (!el) return;
 
