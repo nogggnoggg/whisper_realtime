@@ -4,7 +4,7 @@
 
 ## 📌 目前狀態（每次更新時覆寫此區塊，不要往下追加）
 
-最後更新：2026-06-13（D-015 精譯指令管理頁實作完成，待部署後 CRUD 驗證）
+最後更新：2026-06-13（中英 code-switch 翻譯方向 bug 根因確認 D-017；Roadmap 先行修正，待實作 B+A）
 
 **所在階段**：Zeabur 部署完成、自動化測試全過、wss 修復上線、真 key 已填（REFINE_MODEL 使用者改為 gpt-5.5）→ 等線上語音實測
 **怎麼跑**：線上 https://whisper-realtime-leon.zeabur.app ；本機 PowerShell `npm start`（port 3100）→ http://localhost:3100
@@ -41,7 +41,11 @@
   - 功能：類似 Glossary 的頁面，讓使用者對 Route B refine model 下自訂指令（先讀完整句→依意圖重寫→去口語化等）
   - 決策：**加在硬規則之上**（保留繁體/glossary/只回譯文/保留數字單位，最末重申不可覆蓋）｜**多組具名 prompt 選一個 active**（direction-agnostic）｜**topbar 加兩個連結**（詞彙表、精譯指令）
   - 完成項目：DB 表 `refine_prompts` + `/api/refine-prompts` GET/POST/PUT/DELETE（套 requireDb）+ `refine-prompts.html/js` + refine.js `buildSystemPrompt` 注入（additive，硬規則最末重申）+ index.html topbar 導覽兩連結 + 無 DB graceful degrade（503 + 頁面提示 + Route B 回退寫死預設）
-- [ ] **② 韓文 + 語言對雙選單**（PRD §7.10、D-011；無迫切韓文需求前不啟動，排在 ① 之後）
+- [ ] **② 中英 code-switch 翻譯方向 bug 修正（D-017）← 下一步（bug，優先）**
+  - 根因（trace 實證）：中文夾較多英文的句子 CJK<50% 被判 en → 翻成中文（翻錯邊）。非模型 echo，是 D-006 二元門檻不適合 code-switch。
+  - 修法：B＝`server/lang.js` 門檻改環境變數 `LANG_CJK_THRESHOLD`（預設下調 0.15）；A＝`translate.js`/`refine.js` prompt 強制整句全譯、夾雜外語一併翻、不照抄。
+  - 範圍：僅中↔英；多語言 per-script 偵測留 Phase 4（見 ③、D-011、D-017）。
+- [ ] **③ 韓文 + 語言對雙選單**（PRD §7.10、D-011；無迫切韓文需求前不啟動）；含**偵測通用化（per-script，CJK/諺文/拉丁）** — D-017 的多語言部分併此處理
 - [ ] （未排程）其他 Phase 3 條目：多站別/產線設定、Safety keyword 標示、Log viewer、翻譯品質回報、Refined translation 效果分析
 
 **Backlog（待執行，未排定；線上實測後再評估是否做）**：
@@ -50,9 +54,27 @@
 - [ ] (需寫碼) `STT_CHUNK_MS` 可調（前端 append 塊大小，現寫死 ~20ms，需改 pcm-worklet.js/audio.js）+ 修 `SILENCE_DURATION` 幽靈變數（PROTOCOL 列過但 server 從不讀；靜音實際由前端設定頁滑桿控制 → 接成真的或從文件移除以免誤會）
 - [ ] (低成本/面板可見性) 視需要把「已支援但未上 Zeabur」的變數以預設值加進面板：`TRANSLATE_REASONING_EFFORT`(minimal)、`REFINE_REASONING_EFFORT`(minimal；gpt-5.5 不支援會自動移除)；換供應商才需 `ANTHROPIC_API_KEY`/`TRANSLATE_BASE_URL`/`TRANSLATE_API_KEY`；`STT_PROMPT`(僅 gpt-4o-transcribe)。這類**程式碼已支援**，只是沒加面板，跑預設值
 - [ ] (需寫碼/之後評估) 升級存取保護為 session/cookie 登入（方案 C）：真正登入頁 + 登出按鈕 + 閒置逾時失效 + 關瀏覽器清除憑證。動機＝目前 Basic Auth 無真正登出、憑證快取到「瀏覽器關閉」才清（關分頁不清）、server 無法控制有效期或強制清除（見 D-016）。注意：「關分頁瞬間失效」即使 session 也難 100% 保證，能做到的是登出/閒置逾時/關瀏覽器清
+- [ ] (低成本/之後評估) `LANG_CJK_THRESHOLD` 調整 UI（設定頁欄位/滑桿）：D-017 本期用環境變數，使用者原想要像 glossary 那樣點進去調的 UI，留待併 D-004 ⚙設定頁或 Phase 4 一起做
 
-**下一步**：git push → Zeabur 自動部署 → 實測 /api/refine-prompts CRUD（含 503 degrade）及精譯效果（Route B 第三行出現自訂指令風格）。（Basic Auth 已上線，D-015 程式碼已完成。）
+**下一步**：實作 D-017 修法（B：lang.js `LANG_CJK_THRESHOLD` 可調、預設 0.15；A：translate.js/refine.js prompt 強制全譯）走 Workflow → 部署 → 重講失敗句確認改判 zh→翻英 → 移除 [trace] 暫時 log。（D-015 精譯指令頁亦待線上 CRUD 實測。）
 **注意事項**：app 的模型/供應商由 Zeabur 環境變數控制：`TRANSLATE_PROVIDER`（openai/anthropic/custom）、`TRANSLATE_MODEL`、`REFINE_MODEL`、`STT_MODEL`；STT 目前僅 OpenAI 實作，OPENAI_API_KEY 必填。真 key 永不經過對話，由使用者在 Zeabur 後台填。`STT_LANGUAGE`：單語為主現場可設（如 `zh`），雙語輪流現場留空（auto-detect）。`BASIC_AUTH_USERS`：未設＝全站開放（程式正常運行但無驗證）；設多組 `user:pass` 後保護靜態頁、`/api/*` 及 WebSocket `/ws`；Basic Auth 無正式登出，需關閉瀏覽器或清除憑證。開發用 workflow 模式且 subagent 要做模型分配（CLAUDE.md Development conventions）。
+
+---
+
+## 2026-06-13 — 中英 code-switch 翻譯方向 bug 根因確認（D-017）+ Roadmap 先行修正
+
+**現象**：Always-On 講中英夾雜句，原文轉錄出來但「翻譯欄呈現的不是想要的語言」。使用者一度以為是即時翻譯 / echo。
+
+**用 [trace] log 實證根因**（線上重現 + Zeabur runtime log）：
+- 句「please幫我check一下。 the shipment,然後update狀態。」→ `final lang=en` → `translate.out="請幫我檢查一下貨件，然後更新狀態。"`。即偵測判成**英文方**→翻成**中文**（翻錯邊）；非模型 echo（模型翻得出來，只是方向錯）。
+- 對照「我準備commit現在這個版本」CJK≈60% 判 zh→正確翻英。差別在英文佔比：英文越多 CJK 佔比越低，跌破 D-006 的 50% 門檻。
+- 同時確認轉錄機制：draft 逐字串流（邊講邊轉錄），翻譯在 audio.stop（commit）後才做；長句因停頓≥2s 被 silence 切成多段，每段各自翻譯。
+
+**Roadmap 先行修正（本次，依使用者指示「先修正再執行」）**：
+- DECISIONS：D-006 加更正註記；新增 **D-017**（可調 CJK 門檻 + prompt 全譯；範圍限中↔英；多語言 per-script 留 Phase 4）。
+- dashboard：Phase 3 待辦新增「② D-017 bug 修正（優先）」，韓文順為 ③ 並註明偵測通用化併此；backlog 加「LANG_CJK_THRESHOLD 調整 UI」。
+
+**待執行（下一步）**：走 Workflow 實作 B（lang.js `LANG_CJK_THRESHOLD`，預設 0.15）+ A（translate.js/refine.js prompt 強制全譯）→ 部署 → 重講失敗句確認改判 zh→翻英 → 移除 [trace] 暫時 log。
 
 ---
 
