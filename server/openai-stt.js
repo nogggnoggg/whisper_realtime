@@ -88,6 +88,10 @@ const FACTORY_PROMPT_DEFAULT =
 const STT_PROMPT =
   process.env.STT_PROMPT !== undefined ? process.env.STT_PROMPT : FACTORY_PROMPT_DEFAULT;
 
+// transcription.language：來源語言提示（單一 ISO-639-1 碼，如 zh / en）。
+// 雙語輪流現場留空＝auto-detect；僅「單語為主」現場才設，用來鎖語言提升精度。
+const STT_LANGUAGE = process.env.STT_LANGUAGE || null;
+
 // ─────────────────────────────────────────────────────────────────────────────────────
 
 export class OpenAISTTSession {
@@ -229,6 +233,8 @@ export class OpenAISTTSession {
     if (STT_MODEL === 'gpt-4o-transcribe' && STT_PROMPT) {
       transcription.prompt = STT_PROMPT;
     }
+
+    if (STT_LANGUAGE) transcription.language = STT_LANGUAGE;
 
     /** @type {Record<string, unknown>} */
     const audioInput = {

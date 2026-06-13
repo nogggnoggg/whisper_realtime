@@ -4,7 +4,7 @@
 
 ## 📌 目前狀態（每次更新時覆寫此區塊，不要往下追加）
 
-最後更新：2026-06-13（Route B reasoning_effort 修復）
+最後更新：2026-06-13（STT_LANGUAGE 環境變數實作 + PROTOCOL §6.6 可調參數文件補齊）
 
 **所在階段**：Zeabur 部署完成、自動化測試全過、wss 修復上線、真 key 已填（REFINE_MODEL 使用者改為 gpt-5.5）→ 等線上語音實測
 **怎麼跑**：線上 https://whisper-realtime-leon.zeabur.app ；本機 PowerShell `npm start`（port 3100）→ http://localhost:3100
@@ -27,12 +27,28 @@
 - [x] 修復 Route B 無聲失敗（gpt-5.5 不支援 reasoning_effort=minimal → 環境變數覆寫＋400 自動回退＋前端 refined_error 提示，commit b3e47f3f7c141e4c9b2511644564f6313d931b52）
 - [x] Phase 2 自動化實測（Workflow phase2-deploy-verify）：Glossary REST CRUD 9/9 過、靜態頁/資產 200、WS 握手 OK、PG 持久化確認（id=1 zh/en 隔離區→quarantine zone）
 - [x] 使用者把 Zeabur app 的 OPENAI_API_KEY 換成真 key（並自行把 REFINE_MODEL 改為 gpt-5.5）
+- [x] STT_LANGUAGE 環境變數實作（單語現場可設 ISO-639-1 碼；雙語留空）；PROTOCOL.md §6.6 / §6.6.1 全部可調 STT 參數補齊說明（合法值、建議值、Zeabur 設定方式）（D-014）
 - [ ] **線上語音實測 Route A + Route B 精準翻譯（含 Glossary 術語套用、translation_logs 寫入確認） ← 現在卡在這**
 - [ ] Zeabur 平台層存取保護（basic auth / IP 限制，部署驗證 OK 後設定）
 - [ ] Phase 3：韓文 + 語言對雙選單（PRD §7.10）
 
-**下一步**：(1) 使用者開 https://whisper-realtime-leon.zeabur.app 做線上語音實測（Route A 轉錄/翻譯、Route B 精譯出現第三行 [Refined]、Glossary：說含「隔離區」的句子應譯出 quarantine zone；實測時請用無痕視窗確認首次載入 Auto 模式直接可用；可設 REFINE_REASONING_EFFORT=low 加速精譯）；(2) OK 後設 Zeabur 平台層存取保護（basic auth / IP 限制）
-**注意事項**：app 的模型/供應商由 Zeabur 環境變數控制：`TRANSLATE_PROVIDER`（openai/anthropic/custom）、`TRANSLATE_MODEL`、`REFINE_MODEL`、`STT_MODEL`；STT 目前僅 OpenAI 實作，OPENAI_API_KEY 必填。真 key 永不經過對話，由使用者在 Zeabur 後台填。開發用 workflow 模式且 subagent 要做模型分配（CLAUDE.md Development conventions）。
+**下一步**：(1) 使用者開 https://whisper-realtime-leon.zeabur.app 做線上語音實測（Route A 轉錄/翻譯、Route B 精譯出現第三行 [Refined]、Glossary：說含「隔離區」的句子應譯出 quarantine zone；實測時請用無痕視窗確認首次載入 Auto 模式直接可用；可設 REFINE_REASONING_EFFORT=low 加速精譯）；若現場幾乎只有中文，可試設 STT_LANGUAGE=zh 觀察辨識精度改善；(2) OK 後設 Zeabur 平台層存取保護（basic auth / IP 限制）
+**注意事項**：app 的模型/供應商由 Zeabur 環境變數控制：`TRANSLATE_PROVIDER`（openai/anthropic/custom）、`TRANSLATE_MODEL`、`REFINE_MODEL`、`STT_MODEL`；STT 目前僅 OpenAI 實作，OPENAI_API_KEY 必填。真 key 永不經過對話，由使用者在 Zeabur 後台填。`STT_LANGUAGE`：單語為主現場可設（如 `zh`），雙語輪流現場留空（auto-detect）。開發用 workflow 模式且 subagent 要做模型分配（CLAUDE.md Development conventions）。
+
+---
+
+## 2026-06-13 — STT_LANGUAGE 環境變數 + 可調參數文件補齊
+
+**完成事項**：
+- 新增 `STT_LANGUAGE` 環境變數，對應 OpenAI `session.audio.input.transcription.language`，預設留空（auto-detect）。單語為主現場（如廠內全程中文）可在 Zeabur Variables 設 `STT_LANGUAGE=zh` 重啟生效，提升該語言辨識精度並降低首字延遲。
+- `docs/PROTOCOL.md` §6.6 環境變數表新增 `STT_LANGUAGE` 列。
+- `docs/PROTOCOL.md` §6.6.1 STT 參數詳細說明全面補強：所有已可調參數（STT_MODEL / STT_DELAY / STT_NOISE_REDUCTION / STT_PROMPT / STT_LANGUAGE）均補齊合法值、建議值、Zeabur 設定步驟；新增「Silence Hold-off 由前端滑桿調整、非環境變數」說明；新增如何在 Zeabur 後台調整的統一引言。
+- `model_parameters.md` 標題下插入指示行，引導使用者到 PROTOCOL.md §6.6 查看已實作的可調欄位。
+- `docs/DECISIONS.md` 新增 D-014，記錄 STT_LANGUAGE 設計決策與釐清項（雙語留空原因、`_buildSessionUpdate()` 一次性送出機制、改環境變數重啟生效不需改碼）。
+
+**為何併入當前線上實測階段**：線上實測前使用者需知道哪些參數可調、怎麼調——文件補齊是實測前準備的一部分，與精度優化（STT_DELAY、STT_NOISE_REDUCTION、STT_PROMPT）直接相關；STT_LANGUAGE 是同批新增的輕量功能，一次整理清楚避免下次重複說明。
+
+**下一步**：使用者線上語音實測；若現場幾乎只有中文可試設 `STT_LANGUAGE=zh`（Zeabur Variables 改完重啟）觀察辨識精度改善。
 
 ---
 

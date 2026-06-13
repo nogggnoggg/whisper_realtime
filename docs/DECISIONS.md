@@ -218,3 +218,24 @@ Threshold % ↔ dB 對應：0% = -50dB，100% = 0dB，線性對映（60% ≈ -20
 - 等使用者填真 key 再測試：阻塞所有 DB/Glossary 驗證，且該部分根本不需要 OpenAI
 
 **遺留**：git push 會自動觸發 Zeabur 重建（已驗證）。STT 僅 OpenAI 實作，若要「完全去 OpenAI」需另立 STT 供應商抽象工作項。
+
+## D-014：STT_LANGUAGE 環境變數與調參方式釐清
+
+**日期**：2026-06-13
+
+**決策**：
+將 OpenAI transcription session 的 `session.audio.input.transcription.language` 欄位以環境變數 `STT_LANGUAGE` 暴露，預設留空（auto-detect）。此變數定位為「單語為主現場」的 per-deployment 語言鎖定覆寫；雙語輪流場景維持留空。
+
+**理由**：
+- OpenAI 文件指明提供語言碼可提升該語言辨識精度與降低首字延遲。
+- 但 `transcription.language` 只接受**單一** ISO-639-1 語言碼；本系統中英（或未來中英韓）雙語輪流共用同一 session，固定語言碼會降低另一方向的辨識精度，故雙語場景必須留空。
+- 仍有使用者有「廠內幾乎全中文、偶有英文術語」的單語為主現場，此時設 `STT_LANGUAGE=zh` 可有效提升精度，需求真實存在。
+
+**釐清項**：
+- `_buildSessionUpdate()` 是連線時送一次的 `session.update`，不是動態切換機制；`STT_LANGUAGE` 在 Zeabur 改完需**重啟 service** 才生效。
+- 「做成環境變數」的意思是：值由 `process.env.STT_LANGUAGE` 提供，函式邏輯已實作，之後只需在 Zeabur 後台改變數值並重啟，完全不需改程式碼。
+- 函式本身只在新增欄位時改一次；日後調整語言設定的入口是 Zeabur Variables，不是程式碼。
+
+**否決方案與原因**：
+- 硬填單一語言（如 `zh`）：否決，中英輪流場景英語辨識精度下降，不適合預設值。
+- 完全不暴露（永遠 auto-detect）：否決，單語為主現場的使用者有真實的精度改善需求，且成本為零。

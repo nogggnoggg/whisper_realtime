@@ -250,6 +250,7 @@ Standby（不送音訊）
 | `REFINE_MODEL` | 精準翻譯模型，沿用 TRANSLATE_PROVIDER（例 openai 時為 `gpt-4o` 等），無值時 Route B 停用 | — |
 | `REFINE_REASONING_EFFORT` | gpt-5 系列精準翻譯的 reasoning_effort 值（none/low/medium/high/xhigh/minimal，模型不支援時自動移除重試） | `minimal` |
 | `TRANSLATE_REASONING_EFFORT` | gpt-5 系列 Route A 翻譯的 reasoning_effort 值（none/low/medium/high/xhigh/minimal，模型不支援時自動移除重試） | `minimal` |
+| `STT_LANGUAGE` | 來源語言提示，單一 ISO-639-1 碼如 `zh`/`en`；**預設留空＝auto-detect**；雙語輪流請留空，僅單語為主的現場才設 | （留空） |
 
 載入方式：`dotenv`，`.env` 檔不進 git。
 
@@ -258,31 +259,13 @@ Standby（不送音訊）
 - 填入時自動啟用 Glossary 記錄、Session 日誌等 Phase 2 功能。
 - Zeabur PostgreSQL service 自動注入 `DATABASE_URL` 環境變數。
 
-#### 6.6.1 STT 參數詳細說明（實測 2026-06-12）
+#### 6.6.1 STT 參數詳細說明（實測 2026-06-12；STT_LANGUAGE 新增 2026-06-13）
 
-**STT_DELAY**
+> **如何在 Zeabur 調整**：進入 Zeabur 後台 → 選 `app` service → Variables → 新增或修改對應環境變數 → 重啟 service 生效。所有 STT 參數均在 server 建立 OpenAI session 時送出（`session.update`），**不需改程式碼**，改環境變數重啟即可。
 
-- **欄位路徑**：`session.audio.input.transcription.delay`
-- **合法值**：`minimal`、`low`、`medium`、`high`、`xhigh`
-- **預設值**：`medium`
-- **說明**：控制轉錄延遲 vs 精度的平衡。越高延遲越低但精度越低；反之越高精度越好。工廠環境推薦 `high` 或 `xhigh`。
-- **驗證註記**：API 對非法值回傳 `invalid_value` 錯誤並列出合法值清單。session.updated echo 不含此欄位（服務端驗證但不反映），此行為正常，不代表欄位無效。其他路徑候選（`session.latency`、`session.audio.input.latency` 等）均拒絕 `unknown_parameter`。
+> **Silence Hold-off（斷句延遲）**：Auto 模式音量低於門檻後等待多久才停止錄音，目前由**前端設定頁**的滑桿調整（預設 2000ms），是 client-side 設定，不走環境變數。
 
-**STT_NOISE_REDUCTION**
-
-- **欄位路徑**：`session.audio.input.noise_reduction`
-- **合法值**：`near_field`（近距離麥克風）、`far_field`（遠距離麥克風）、或 `null`（停用）
-- **預設值**：`near_field`
-- **說明**：自動噪音消除強度。工廠環境機械音多，`near_field` 適合固定式麥克風，`far_field` 適合距聲源 1m+ 的麥克風。
-- **驗證註記**：API echo 確認此欄位被接受並原樣回傳：`noise_reduction: { type: 'near_field' }`。`auto` 被拒絕為 `invalid_value`，API 明確告知支援值。
-
-**STT_PROMPT**
-
-- **欄位路徑**：`session.audio.input.transcription.prompt`
-- **適用模型**：僅 `gpt-4o-transcribe` 支援；`gpt-realtime-whisper` 使用時拒絕 `invalid_value`
-- **預設值**：（留空，使用 OpenAI 內建工廠術語庫）
-- **說明**：提示詞範例：`品保 QA、隔離區 quarantine area、停線 stop the line、卡料 material jam、首件檢查 first article inspection` — 可用中英混合。此參數提升轉錄精度，特別是領域術語。
-- **驗證註記**：session.updated echo 確認 prompt 欄位被接受：`transcription: { model: 'gpt-4o-transcribe', language: null, prompt: '...' }`。
+---
 
 **STT_MODEL**
 
@@ -291,7 +274,60 @@ Standby（不送音訊）
 - **說明**：
   - `gpt-realtime-whisper`：低延遲（~200ms），支援 delta 事件串流轉錄，不支援 prompt 提示詞
   - `gpt-4o-transcribe`：延遲稍高（~500ms），支援 prompt 欄位，精度略高，適合高精度場景（A/B 測試用）
+- **建議**：預設即可；需要術語 prompt 時改 `gpt-4o-transcribe` 並同步設 `STT_PROMPT`。
+- **Zeabur 設定**：Variables → `STT_MODEL=gpt-4o-transcribe`，重啟生效。
 - **驗證註記**：兩者均可作為 `session.audio.input.transcription.model` 使用，session.updated echo 確認：`transcription: { model: 'gpt-4o-transcribe', ... }`。
+
+---
+
+**STT_DELAY**
+
+- **欄位路徑**：`session.audio.input.transcription.delay`
+- **合法值**：`minimal`、`low`、`medium`、`high`、`xhigh`
+- **預設值**：`medium`
+- **說明**：控制轉錄延遲 vs 精度的平衡。值越低出字越快但精度越低；值越高精度越好但出字較慢。工廠環境（術語多、背景音複雜）推薦 `high` 或 `xhigh`。
+- **建議**：先試 `high`；若仍有漏字再升 `xhigh`；若字幕延遲感明顯可退回 `medium`。
+- **Zeabur 設定**：Variables → `STT_DELAY=high`，重啟生效。
+- **驗證註記**：API 對非法值回傳 `invalid_value` 錯誤並列出合法值清單。session.updated echo 不含此欄位（服務端驗證但不反映），此行為正常，不代表欄位無效。其他路徑候選（`session.latency`、`session.audio.input.latency` 等）均拒絕 `unknown_parameter`。
+
+---
+
+**STT_NOISE_REDUCTION**
+
+- **欄位路徑**：`session.audio.input.noise_reduction`
+- **合法值**：`near_field`（近距離麥克風）、`far_field`（遠距離麥克風）、或 `null`（停用）
+- **預設值**：`near_field`
+- **說明**：自動噪音消除強度。工廠環境機械音多，`near_field` 適合固定式麥克風，`far_field` 適合距聲源 1m+ 的麥克風。若噪音消除反而使人聲失真，設 `null` 停用。
+- **建議**：一般工廠場景維持 `near_field`；若麥克風距嘴巴超過 1m 可試 `far_field`。
+- **Zeabur 設定**：Variables → `STT_NOISE_REDUCTION=far_field`（或 `null`），重啟生效。
+- **驗證註記**：API echo 確認此欄位被接受並原樣回傳：`noise_reduction: { type: 'near_field' }`。`auto` 被拒絕為 `invalid_value`，API 明確告知支援值。
+
+---
+
+**STT_PROMPT**
+
+- **欄位路徑**：`session.audio.input.transcription.prompt`
+- **適用模型**：**僅 `gpt-4o-transcribe` 支援**；`gpt-realtime-whisper` 使用時 API 拒絕 `invalid_value`（需同步把 `STT_MODEL` 改為 `gpt-4o-transcribe`）
+- **預設值**：（留空，使用 OpenAI 內建通用辨識）
+- **合法值**：自由文字，可中英混合；建議格式為「術語中文 英文對照」條列，例：`品保 QA、隔離區 quarantine area、停線 stop the line、卡料 material jam、首件檢查 first article inspection`
+- **說明**：讓模型優先辨識指定術語，有效降低專業詞彙的誤辨率。prompt 僅用於引導辨識，不會出現在轉錄輸出中。
+- **建議**：先從 5–10 個最常用術語開始；避免放太長（可能影響整體精度）。
+- **Zeabur 設定**：Variables → `STT_PROMPT=品保 QA、隔離區 quarantine area`，重啟生效。注意：`STT_MODEL` 必須同時為 `gpt-4o-transcribe`，否則此參數被忽略並報錯。
+- **驗證註記**：session.updated echo 確認 prompt 欄位被接受：`transcription: { model: 'gpt-4o-transcribe', language: null, prompt: '...' }`。
+
+---
+
+**STT_LANGUAGE**
+
+- **欄位路徑**：`session.audio.input.transcription.language`
+- **合法值**：單一 ISO-639-1 語言碼，如 `zh`（中文）、`en`（英文）、`ja`（日文）、`ko`（韓文）；**留空**代表 auto-detect
+- **預設值**：（留空，由 OpenAI 自動偵測語言）
+- **說明**：提供語言碼可讓模型跳過語言偵測步驟，提升該語言的辨識精度與降低首字延遲。**但此欄位只接受單一語言碼**。本系統中英雙語輪流說話共用同一個 session，若固定填 `zh`，英語發言的辨識精度會下降（反之亦然），因此**雙語現場必須留空**。僅在「現場幾乎只有一種語言」（例如全程中文、偶有英文技術詞彙）的單語為主場景才建議設定。
+- **建議**：
+  - 雙語輪流（預設情境）→ 留空（不設此變數）
+  - 單語為主（如廠內全程中文）→ `STT_LANGUAGE=zh`
+- **Zeabur 設定**：Variables → `STT_LANGUAGE=zh`，重啟生效。若要恢復 auto-detect，刪除此變數（或設空字串）並重啟。
+- **實作說明**：此欄位由後端 `_buildSessionUpdate()` 在建立 OpenAI session 時一次性送出（`session.update`）。連線後無法動態切換，需重啟 service 才生效。
 
 ### 6.7 Conversation Card 顯示規則
 
