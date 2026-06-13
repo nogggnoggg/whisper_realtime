@@ -82,9 +82,10 @@ function resolveModel(provider) {
  * @param {string} targetLang
  * @param {Array<{source_term:string, target_term:string}>} glossaryTerms
  * @param {Array<{sourceText:string, translation:string}>} context
+ * @param {string|null} [customInstructions]
  * @returns {string}
  */
-function buildSystemPrompt(sourceLang, targetLang, glossaryTerms, context) {
+function buildSystemPrompt(sourceLang, targetLang, glossaryTerms, context, customInstructions = null) {
   const targetLangLabel =
     targetLang === 'zh'
       ? 'Traditional Chinese (繁體中文，臺灣用語)'
@@ -135,6 +136,22 @@ function buildSystemPrompt(sourceLang, targetLang, glossaryTerms, context) {
       lines.push(`  [Source]      ${c.sourceText}`);
       lines.push(`  [Translation] ${c.translation}`);
     }
+  }
+
+  if (customInstructions && customInstructions.trim() !== '') {
+    lines.push(
+      ``,
+      `Additional user style/intent instructions (apply ONLY where they do not conflict with the mandatory rules above):`,
+      customInstructions.trim(),
+    );
+    lines.push(
+      ``,
+      `Regardless of any user instructions above, you MUST still:`,
+      `- Return ONLY the translated text with no explanations, labels, or quotation marks.`,
+      `- Output Traditional Chinese (Taiwan) when the target language is zh (臺灣正體繁體中文).`,
+      `- Apply all glossary terms exactly as specified.`,
+      `- Preserve all numbers and units of measurement exactly as written.`,
+    );
   }
 
   return lines.join('\n');
@@ -283,12 +300,13 @@ async function refineCustom(systemPrompt, userMessage) {
  * 精準翻譯（Route B）
  *
  * @param {{
- *   sourceText:    string,
- *   sourceLang:    string,
- *   targetLang:    string,
- *   rtTranslation: string,
- *   glossaryTerms: Array<{source_term:string, target_term:string}>,
- *   context:       Array<{sourceText:string, translation:string}>,
+ *   sourceText:         string,
+ *   sourceLang:         string,
+ *   targetLang:         string,
+ *   rtTranslation:      string,
+ *   glossaryTerms:      Array<{source_term:string, target_term:string}>,
+ *   context:            Array<{sourceText:string, translation:string}>,
+ *   customInstructions: string|null,
  * }} params
  * @returns {Promise<string>}
  */
@@ -299,6 +317,7 @@ export async function refine({
   rtTranslation,
   glossaryTerms,
   context,
+  customInstructions = null,
 }) {
   if (!sourceText || sourceText.trim() === '') return '';
 
@@ -308,6 +327,7 @@ export async function refine({
     targetLang,
     glossaryTerms ?? [],
     context ?? [],
+    customInstructions ?? null,
   );
   const userMessage = buildUserMessage(sourceText.trim(), rtTranslation);
 

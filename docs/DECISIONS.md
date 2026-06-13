@@ -278,6 +278,8 @@ Threshold % ↔ dB 對應：0% = -50dB，100% = 0dB，線性對映（60% ≈ -20
 - 單一全域純文字（不具名）：否決，使用者要可備多套切換。
 - per-session 不同 prompt：暫緩（本期全域單一 active；之後若需要再擴充 WS settings 帶 `refinePromptId`）。
 
+> **實作完成 2026-06-13**（沿用 glossary 架構，additive 注入，硬規則最末重申）：DB 表 `refine_prompts` + REST `/api/refine-prompts` CRUD（套 requireDb）+ 前端 `refine-prompts.html/js` + refine.js `buildSystemPrompt` 注入 + index.html topbar 導覽修復；無 DB graceful degrade 全路徑（API 503、頁面離線提示、Route B 回退寫死預設）。
+
 ---
 
 ## D-016：v1 存取保護＝app 內最小 HTTP Basic Auth middleware

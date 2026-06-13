@@ -34,6 +34,11 @@ import {
   listGlossaryTerms,
   createGlossaryTerm,
   updateGlossaryTerm,
+  listRefinePrompts,
+  createRefinePrompt,
+  updateRefinePrompt,
+  deleteRefinePrompt,
+  getActiveRefinePrompt,
 } from './db.js';
 
 // ── Config ──────────────────────────────────────────────────────────────────
@@ -127,6 +132,81 @@ app.put('/api/glossary/:id', requireDb, async (req, res) => {
     res.json(row);
   } catch (err) {
     console.error('[PUT /api/glossary/:id]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── REST API：Refine Prompt 庫 ────────────────────────────────────────────────
+
+/**
+ * GET /api/refine-prompts
+ * 回傳全部 refine prompt 列表。
+ */
+app.get('/api/refine-prompts', requireDb, async (req, res) => {
+  try {
+    const rows = await listRefinePrompts();
+    res.json(rows);
+  } catch (err) {
+    console.error('[GET /api/refine-prompts]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * POST /api/refine-prompts
+ * Body: { name, prompt_text, enabled? }
+ */
+app.post('/api/refine-prompts', requireDb, async (req, res) => {
+  const { name, prompt_text, enabled } = req.body ?? {};
+  if (!name || !prompt_text) {
+    return res.status(400).json({ error: 'name 與 prompt_text 為必填欄位' });
+  }
+  try {
+    const row = await createRefinePrompt({ name, prompt_text, enabled });
+    if (!row) return res.status(500).json({ error: '新增失敗' });
+    res.status(201).json(row);
+  } catch (err) {
+    console.error('[POST /api/refine-prompts]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * PUT /api/refine-prompts/:id
+ * Body: { name?, prompt_text?, enabled?, is_active? }（可部分更新，至少一欄）
+ */
+app.put('/api/refine-prompts/:id', requireDb, async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (!Number.isFinite(id)) {
+    return res.status(400).json({ error: 'id 必須為整數' });
+  }
+  const { name, prompt_text, enabled, is_active } = req.body ?? {};
+  if (name === undefined && prompt_text === undefined && enabled === undefined && is_active === undefined) {
+    return res.status(400).json({ error: '至少須提供 name、prompt_text、enabled 或 is_active 其一' });
+  }
+  try {
+    const row = await updateRefinePrompt(id, { name, prompt_text, enabled, is_active });
+    if (!row) return res.status(404).json({ error: '找不到指定 prompt' });
+    res.json(row);
+  } catch (err) {
+    console.error('[PUT /api/refine-prompts/:id]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * DELETE /api/refine-prompts/:id
+ */
+app.delete('/api/refine-prompts/:id', requireDb, async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (!Number.isFinite(id)) {
+    return res.status(400).json({ error: 'id 必須為整數' });
+  }
+  try {
+    await deleteRefinePrompt(id);
+    res.status(204).end();
+  } catch (err) {
+    console.error('[DELETE /api/refine-prompts/:id]', err.message);
     res.status(500).json({ error: err.message });
   }
 });
@@ -290,6 +370,8 @@ wss.on('connection', (clientWs) => {
               (async () => {
                 try {
                   const glossaryTerms = await findGlossaryTerms(lang, targetLang, finalText);
+                  const activePrompt = await getActiveRefinePrompt();
+                  const customInstructions = activePrompt?.prompt_text ?? null;
                   const refinedRaw = await refine({
                     sourceText:    finalText,
                     sourceLang:    lang,
@@ -297,6 +379,7 @@ wss.on('connection', (clientWs) => {
                     rtTranslation: translationOut,
                     glossaryTerms,
                     context:       contextSnapshot,
+                    customInstructions,
                   });
                   if (!refinedRaw) return;
                   // 目標語言為中文時過繁體轉換

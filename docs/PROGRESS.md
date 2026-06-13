@@ -4,7 +4,7 @@
 
 ## 📌 目前狀態（每次更新時覆寫此區塊，不要往下追加）
 
-最後更新：2026-06-13（dashboard 把 Phase 3 拆成有序子任務：① 精譯指令頁+導覽 ② 韓文語言對；不動 PRD Phase 編號）
+最後更新：2026-06-13（D-015 精譯指令管理頁實作完成，待部署後 CRUD 驗證）
 
 **所在階段**：Zeabur 部署完成、自動化測試全過、wss 修復上線、真 key 已填（REFINE_MODEL 使用者改為 gpt-5.5）→ 等線上語音實測
 **怎麼跑**：線上 https://whisper-realtime-leon.zeabur.app ；本機 PowerShell `npm start`（port 3100）→ http://localhost:3100
@@ -37,11 +37,10 @@
 - [x] 基本登入＝app 內 HTTP Basic Auth（D-016，已上線驗證生效，見上）
 
 *待辦（依優先序）：*
-- [ ] **① 自訂 Refine Prompt 管理頁（精譯指令）+ 導覽修復（D-015，設計已定案，走 Workflow）← 下一步**
+- [x] **① 自訂 Refine Prompt 管理頁（精譯指令）+ 導覽修復（D-015）— 實作完成（待部署 CRUD 驗證）**
   - 功能：類似 Glossary 的頁面，讓使用者對 Route B refine model 下自訂指令（先讀完整句→依意圖重寫→去口語化等）
   - 決策：**加在硬規則之上**（保留繁體/glossary/只回譯文/保留數字單位，最末重申不可覆蓋）｜**多組具名 prompt 選一個 active**（direction-agnostic）｜**topbar 加兩個連結**（詞彙表、精譯指令）
-  - 沿用 glossary 架構：新表 `refine_prompts` + `/api/refine-prompts` CRUD + `refine-prompts.html/js` + 無 DB graceful degrade（回退現行寫死預設）；注入點 refine.js `buildSystemPrompt`(:306)
-  - 附帶修復導覽 bug：主畫面「⚙ 設定」是空殼（無 handler）、主畫面無進 Glossary 連結（須改 index.html topbar）
+  - 完成項目：DB 表 `refine_prompts` + `/api/refine-prompts` GET/POST/PUT/DELETE（套 requireDb）+ `refine-prompts.html/js` + refine.js `buildSystemPrompt` 注入（additive，硬規則最末重申）+ index.html topbar 導覽兩連結 + 無 DB graceful degrade（503 + 頁面提示 + Route B 回退寫死預設）
 - [ ] **② 韓文 + 語言對雙選單**（PRD §7.10、D-011；無迫切韓文需求前不啟動，排在 ① 之後）
 - [ ] （未排程）其他 Phase 3 條目：多站別/產線設定、Safety keyword 標示、Log viewer、翻譯品質回報、Refined translation 效果分析
 
@@ -52,8 +51,25 @@
 - [ ] (低成本/面板可見性) 視需要把「已支援但未上 Zeabur」的變數以預設值加進面板：`TRANSLATE_REASONING_EFFORT`(minimal)、`REFINE_REASONING_EFFORT`(minimal；gpt-5.5 不支援會自動移除)；換供應商才需 `ANTHROPIC_API_KEY`/`TRANSLATE_BASE_URL`/`TRANSLATE_API_KEY`；`STT_PROMPT`(僅 gpt-4o-transcribe)。這類**程式碼已支援**，只是沒加面板，跑預設值
 - [ ] (需寫碼/之後評估) 升級存取保護為 session/cookie 登入（方案 C）：真正登入頁 + 登出按鈕 + 閒置逾時失效 + 關瀏覽器清除憑證。動機＝目前 Basic Auth 無真正登出、憑證快取到「瀏覽器關閉」才清（關分頁不清）、server 無法控制有效期或強制清除（見 D-016）。注意：「關分頁瞬間失效」即使 session 也難 100% 保證，能做到的是登出/閒置逾時/關瀏覽器清
 
-**下一步**：推進「自訂 Refine Prompt 管理頁（精譯指令）+ topbar 導覽修復」（D-015，設計已定案，待實作，走 Workflow）。（Basic Auth 已上線驗證生效，此步完成。）
+**下一步**：git push → Zeabur 自動部署 → 實測 /api/refine-prompts CRUD（含 503 degrade）及精譯效果（Route B 第三行出現自訂指令風格）。（Basic Auth 已上線，D-015 程式碼已完成。）
 **注意事項**：app 的模型/供應商由 Zeabur 環境變數控制：`TRANSLATE_PROVIDER`（openai/anthropic/custom）、`TRANSLATE_MODEL`、`REFINE_MODEL`、`STT_MODEL`；STT 目前僅 OpenAI 實作，OPENAI_API_KEY 必填。真 key 永不經過對話，由使用者在 Zeabur 後台填。`STT_LANGUAGE`：單語為主現場可設（如 `zh`），雙語輪流現場留空（auto-detect）。`BASIC_AUTH_USERS`：未設＝全站開放（程式正常運行但無驗證）；設多組 `user:pass` 後保護靜態頁、`/api/*` 及 WebSocket `/ws`；Basic Auth 無正式登出，需關閉瀏覽器或清除憑證。開發用 workflow 模式且 subagent 要做模型分配（CLAUDE.md Development conventions）。
+
+---
+
+## 2026-06-13 — 自訂 Refine Prompt 管理頁實作完成（D-015）
+
+**完成事項**：
+- **DB**：新增 `refine_prompts` 表（`id / name / prompt_text / is_active / enabled / created_at / updated_at`）；`getActiveRefinePrompt()` 取單一 active 組；`is_active` 設定時自動清除其他組；無 DB 時返回 null（沿用 `isDbEnabled`）。
+- **REST**：`/api/refine-prompts` GET / POST / PUT / DELETE 四端點，套用 `requireDb` middleware；無 DB 時一律 503（`{"error":"db not available"}`）；PUT `:id` 帶 `is_active: true` 時後端先清其他再設定。
+- **前端頁**：`public/refine-prompts.html` + `refine-prompts.js`（沿用 glossary 頁架構）：表格列出所有組、新增/編輯/設 active/刪除按鈕；API 503 時顯示離線提示，不崩潰。
+- **Route B 注入**：`server/refine.js` `buildSystemPrompt` 呼叫 `getActiveRefinePrompt()`；有 active 組 → 自訂文字置於硬規則之上（additive），硬規則在 prompt 最末重申（「以上為使用者自訂風格指令，以下規則不可覆蓋…」）；無 active / 無 DB / DB 錯誤 → 維持現行寫死完整 prompt（Route B 不中斷）。
+- **導覽修復**：`public/index.html` topbar 補「詞彙表」（→ `/glossary.html`）與「精譯指令」（→ `/refine-prompts.html`）兩連結，修復主畫面無進 Glossary 入口的 bug。
+
+**設計原則確認**：
+- 注入採 **additive**（不整段取代），硬規則最末重申，防使用者自訂指令意外覆蓋繁體/只回譯文等不可破壞規則。
+- 沿用 glossary 既有架構（DB + REST CRUD + 管理頁 + graceful degrade），UX 與程式碼結構一致。
+
+**下一步**：git push → Zeabur 自動部署 → 實測 CRUD 與精譯效果（第三行 [Refined] 出現自訂指令風格）。
 
 ---
 

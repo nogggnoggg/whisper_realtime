@@ -415,6 +415,22 @@ Standby（不送音訊）
 | `total_audio_duration_sec` | FLOAT | 累計音訊時長（秒） |
 | `source_lang_stats` | JSONB / TEXT | 語言發言統計（例 `{"zh": 5, "en": 3}`） |
 
+### 7.4 精譯指令表
+
+**表名**：`refine_prompts`
+
+| 欄位 | 型別 | 說明 |
+|---|---|---|
+| `id` | UUID / BIGINT | 主鍵 |
+| `name` | varchar(100) | 指令組名稱（使用者自訂，例 `"去口語化"`, `"精簡版"`） |
+| `prompt_text` | TEXT | 自訂 system prompt 段落文字（注入於 Route B 硬規則之上） |
+| `is_active` | BOOLEAN | 是否為當前生效組（全域只有一組為 true；設定某組 active 時自動清除其他） |
+| `enabled` | BOOLEAN | 是否啟用（false 表示停用但保留記錄） |
+| `created_at` | TIMESTAMP | 建立時間 |
+| `updated_at` | TIMESTAMP | 最後修改時間 |
+
+**單一 active 規則**：同一時間僅能有一筆 `is_active = true`；PUT /api/refine-prompts/:id 帶 `is_active: true` 時，後端先將所有其他筆的 `is_active` 更新為 false，再設定目標筆。無 active 時 Route B 回退使用現行寫死預設 prompt。
+
 ---
 
 ## 8. REST API 端點（Phase 2，DATABASE_URL 啟用時）
@@ -466,6 +482,71 @@ Standby（不送音訊）
 
 **DELETE /api/glossary/:id** — 刪除術語
 
+### 8.2 `/api/refine-prompts` — 精譯指令管理
+
+所有端點均套用 `requireDb` middleware：`DATABASE_URL` 未設或 DB 未連線時一律回傳 `503 Service Unavailable`（`{"error": "db not available"}`）。
+
+---
+
+**GET /api/refine-prompts**
+
+查詢所有精譯指令組。
+
+**回應**：
+```json
+[
+  {
+    "id": 1,
+    "name": "去口語化",
+    "prompt_text": "先完整讀取原文與 RT 翻譯，理解說話者意圖後，重寫為書面語，去除口語化字詞。",
+    "is_active": true,
+    "enabled": true,
+    "created_at": "2026-06-13T08:00:00Z",
+    "updated_at": "2026-06-13T08:00:00Z"
+  }
+]
+```
+
+---
+
+**POST /api/refine-prompts** — 新增指令組
+
+**Request body**：
+```json
+{
+  "name": "精簡版",
+  "prompt_text": "保持意思不變，譯文力求精簡，刪除冗詞。",
+  "is_active": false,
+  "enabled": true
+}
+```
+
+**回應**：201 Created + 新增後的完整記錄。
+
+---
+
+**PUT /api/refine-prompts/:id** — 更新指令組
+
+**Request body**（可部分更新）：
+```json
+{
+  "name": "精簡版 v2",
+  "prompt_text": "...",
+  "is_active": true,
+  "enabled": true
+}
+```
+
+- `is_active: true` 時後端自動清除其他筆的 `is_active`，確保全域只有一組生效。
+
+**回應**：200 OK + 更新後的完整記錄。
+
+---
+
+**DELETE /api/refine-prompts/:id** — 刪除指令組
+
+**回應**：204 No Content。若刪除的是 active 組，則不自動設新 active（Route B 回退寫死預設）。
+
 ---
 
 ## 9. 管理頁面（Phase 2）
@@ -483,6 +564,30 @@ Standby（不送音訊）
 - 導出：CSV 下載（備份用）
 
 **存取控制**：由後端 HTTP Basic Auth middleware 統一處理（環境變數 `BASIC_AUTH_USERS`，D-016）；`/healthz` 豁免。
+
+### 9.2 `/refine-prompts.html` — 精譯指令管理頁
+
+靜態 HTML + vanilla JS，位置 `public/refine-prompts.html`（沿用 glossary 頁架構）。
+
+**功能**：
+- 顯示表格：列出所有精譯指令組（名稱、prompt 摘要、active 狀態、enabled 狀態）
+- 新增：表單填寫名稱 + prompt 文字，POST 至 `/api/refine-prompts`
+- 編輯：行末編輯按鈕，PUT 提交（可修改名稱/文字/enabled）
+- 設為 active：按鈕切換當前生效組（PUT 帶 `is_active: true`）
+- 刪除：行末刪除按鈕，DELETE 提交
+- **無 DB 離線降級**：API 回 503 時頁面顯示提示「資料庫未連線，精譯指令功能停用」，不顯示錯誤崩潰
+
+**Route B 注入行為（`server/refine.js` `buildSystemPrompt`）**：
+1. 後端呼叫 `getActiveRefinePrompt()`；有 DB + 有 active 組 → 取出 `prompt_text`。
+2. 自訂 prompt 注入在內建硬規則之上（additive）：`[自訂指令段] \n\n [硬規則]`。
+3. 硬規則在 prompt 最末重申：「以上為使用者自訂風格指令，以下規則不可覆蓋：必須輸出台灣正體繁體中文、只回傳譯文不附任何解釋或標籤、保留數字與單位。」
+4. 無 active 指令 / 無 DB / DB 錯誤 → 回退使用現行寫死完整 prompt（不中斷 Route B）。
+
+**導覽**：
+- `public/index.html` topbar 補兩個連結：`詞彙表`（→ `/glossary.html`）、`精譯指令`（→ `/refine-prompts.html`）。
+- `refine-prompts.html` 含返回主畫面連結（`← 主畫面`）。
+
+**存取控制**：同 glossary.html，由後端 HTTP Basic Auth middleware 統一處理（D-016）。
 
 ---
 

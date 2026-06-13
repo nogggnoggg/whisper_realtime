@@ -128,6 +128,18 @@ export async function initDb() {
       )
     `);
 
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS refine_prompts (
+        id          serial      PRIMARY KEY,
+        name        text        NOT NULL,
+        prompt_text text        NOT NULL,
+        is_active   boolean     NOT NULL DEFAULT false,
+        enabled     boolean     NOT NULL DEFAULT true,
+        created_at  timestamptz          DEFAULT now(),
+        updated_at  timestamptz          DEFAULT now()
+      )
+    `);
+
     _dbEnabled = true;
     console.log('[db] 已連線，資料表就緒');
   } catch (err) {
@@ -318,6 +330,116 @@ export async function updateLogRefined(logId, refinedTranslation, glossaryUsedJs
     );
   } catch (err) {
     console.warn('[db] updateLogRefined 失敗:', err.message);
+  }
+}
+
+// ── 公開：Refine Prompt 庫 CRUD ───────────────────────────────────────────────
+
+/**
+ * 列出所有 refine prompt（DB 停用時回 []）。
+ * @returns {Promise<Array>}
+ */
+export async function listRefinePrompts() {
+  if (!_dbEnabled || !pool) return [];
+  try {
+    const { rows } = await pool.query(
+      `SELECT * FROM refine_prompts ORDER BY id`,
+    );
+    return rows;
+  } catch (err) {
+    console.warn('[db] listRefinePrompts 失敗:', err.message);
+    return [];
+  }
+}
+
+/**
+ * 新增 refine prompt，回傳完整新列（DB 停用時回 null）。
+ * @param {{ name:string, prompt_text:string, enabled?:boolean }} params
+ * @returns {Promise<object|null>}
+ */
+export async function createRefinePrompt({ name, prompt_text, enabled = true }) {
+  if (!_dbEnabled || !pool) return null;
+  try {
+    const { rows } = await pool.query(
+      `INSERT INTO refine_prompts (name, prompt_text, enabled)
+       VALUES ($1, $2, $3)
+       RETURNING *`,
+      [name, prompt_text, enabled],
+    );
+    return rows[0];
+  } catch (err) {
+    console.warn('[db] createRefinePrompt 失敗:', err.message);
+    return null;
+  }
+}
+
+/**
+ * 更新 refine prompt（部分欄位），回傳更新後的列；不存在時回 null。
+ * 若 is_active=true，先清除其他列的 is_active，再設定目標列（單一 active 規則）。
+ * @param {number} id
+ * @param {{ name?:string, prompt_text?:string, enabled?:boolean, is_active?:boolean }} fields
+ * @returns {Promise<object|null>}
+ */
+export async function updateRefinePrompt(id, fields) {
+  if (!_dbEnabled || !pool) return null;
+  const { name, prompt_text, enabled, is_active } = fields;
+  const sets = [];
+  const params = [];
+  if (name        !== undefined) { sets.push(`name        = $${params.length + 1}`); params.push(name); }
+  if (prompt_text !== undefined) { sets.push(`prompt_text = $${params.length + 1}`); params.push(prompt_text); }
+  if (enabled     !== undefined) { sets.push(`enabled     = $${params.length + 1}`); params.push(enabled); }
+  if (is_active   !== undefined) { sets.push(`is_active   = $${params.length + 1}`); params.push(is_active); }
+  if (!sets.length) return null; // 呼叫端應先驗證
+  sets.push('updated_at = now()');
+  params.push(id);
+  try {
+    // 單一 active 規則：啟用某列時先把其他列清除
+    if (is_active === true) {
+      await pool.query(
+        `UPDATE refine_prompts SET is_active = false WHERE id <> $1`,
+        [id],
+      );
+    }
+    const { rows } = await pool.query(
+      `UPDATE refine_prompts SET ${sets.join(', ')} WHERE id = $${params.length} RETURNING *`,
+      params,
+    );
+    return rows[0] ?? null;
+  } catch (err) {
+    console.warn('[db] updateRefinePrompt 失敗:', err.message);
+    return null;
+  }
+}
+
+/**
+ * 刪除 refine prompt。
+ * @param {number} id
+ * @returns {Promise<void>}
+ */
+export async function deleteRefinePrompt(id) {
+  if (!_dbEnabled || !pool) return;
+  try {
+    await pool.query(`DELETE FROM refine_prompts WHERE id = $1`, [id]);
+  } catch (err) {
+    console.warn('[db] deleteRefinePrompt 失敗:', err.message);
+  }
+}
+
+/**
+ * 取得目前啟用中的 refine prompt（is_active=true 且 enabled=true）。
+ * 無符合列時回 null（DB 停用時亦回 null）。
+ * @returns {Promise<object|null>}
+ */
+export async function getActiveRefinePrompt() {
+  if (!_dbEnabled || !pool) return null;
+  try {
+    const { rows } = await pool.query(
+      `SELECT * FROM refine_prompts WHERE is_active = true AND enabled = true LIMIT 1`,
+    );
+    return rows[0] ?? null;
+  } catch (err) {
+    console.warn('[db] getActiveRefinePrompt 失敗:', err.message);
+    return null;
   }
 }
 
