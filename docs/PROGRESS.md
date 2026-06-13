@@ -4,7 +4,7 @@
 
 ## 📌 目前狀態（每次更新時覆寫此區塊，不要往下追加）
 
-最後更新：2026-06-13（中英 code-switch 翻譯方向 bug 根因確認 D-017；Roadmap 先行修正，待實作 B+A）
+最後更新：2026-06-13（D-017 中英 code-switch 翻譯方向 bug 已修並線上驗證生效；[trace] 暫時 log 已移除）
 
 **所在階段**：Zeabur 部署完成、自動化測試全過、wss 修復上線、真 key 已填（REFINE_MODEL 使用者改為 gpt-5.5）→ 等線上語音實測
 **怎麼跑**：線上 https://whisper-realtime-leon.zeabur.app ；本機 PowerShell `npm start`（port 3100）→ http://localhost:3100
@@ -41,9 +41,10 @@
   - 功能：類似 Glossary 的頁面，讓使用者對 Route B refine model 下自訂指令（先讀完整句→依意圖重寫→去口語化等）
   - 決策：**加在硬規則之上**（保留繁體/glossary/只回譯文/保留數字單位，最末重申不可覆蓋）｜**多組具名 prompt 選一個 active**（direction-agnostic）｜**topbar 加兩個連結**（詞彙表、精譯指令）
   - 完成項目：DB 表 `refine_prompts` + `/api/refine-prompts` GET/POST/PUT/DELETE（套 requireDb）+ `refine-prompts.html/js` + refine.js `buildSystemPrompt` 注入（additive，硬規則最末重申）+ index.html topbar 導覽兩連結 + 無 DB graceful degrade（503 + 頁面提示 + Route B 回退寫死預設）
-- [ ] **② 中英 code-switch 翻譯方向 bug 修正（D-017）← 下一步（bug，優先）**
+- [x] **② 中英 code-switch 翻譯方向 bug 修正（D-017）— 已上線驗證生效（2026-06-13）**
   - 根因（trace 實證）：中文夾較多英文的句子 CJK<50% 被判 en → 翻成中文（翻錯邊）。非模型 echo，是 D-006 二元門檻不適合 code-switch。
-  - 修法：B＝`server/lang.js` 門檻改環境變數 `LANG_CJK_THRESHOLD`（預設下調 0.15）；A＝`translate.js`/`refine.js` prompt 強制整句全譯、夾雜外語一併翻、不照抄。
+  - 修法：B＝`server/lang.js` 門檻改環境變數 `LANG_CJK_THRESHOLD`（預設 0.15）；A＝`translate.js`/`refine.js` prompt 強制整句全譯、夾雜外語一併翻、不照抄。
+  - **線上驗證**：重講「please幫我check一下shipment, 然後update狀態。」→ trace 顯示 `lang=zh` → 翻成 "Please help me check the shipment, then update the status."（不再吐回中文）。診斷用 `[trace]` log 已移除（commit 收尾）。
   - 範圍：僅中↔英；多語言 per-script 偵測留 Phase 4（見 ③、D-011、D-017）。
 - [ ] **③ 韓文 + 語言對雙選單**（PRD §7.10、D-011；無迫切韓文需求前不啟動）；含**偵測通用化（per-script，CJK/諺文/拉丁）** — D-017 的多語言部分併此處理
 - [ ] （未排程）其他 Phase 3 條目：多站別/產線設定、Safety keyword 標示、Log viewer、翻譯品質回報、Refined translation 效果分析
@@ -56,7 +57,7 @@
 - [ ] (需寫碼/之後評估) 升級存取保護為 session/cookie 登入（方案 C）：真正登入頁 + 登出按鈕 + 閒置逾時失效 + 關瀏覽器清除憑證。動機＝目前 Basic Auth 無真正登出、憑證快取到「瀏覽器關閉」才清（關分頁不清）、server 無法控制有效期或強制清除（見 D-016）。注意：「關分頁瞬間失效」即使 session 也難 100% 保證，能做到的是登出/閒置逾時/關瀏覽器清
 - [ ] (低成本/之後評估) `LANG_CJK_THRESHOLD` 調整 UI（設定頁欄位/滑桿）：D-017 本期用環境變數，使用者原想要像 glossary 那樣點進去調的 UI，留待併 D-004 ⚙設定頁或 Phase 4 一起做
 
-**下一步**：實作 D-017 修法（B：lang.js `LANG_CJK_THRESHOLD` 可調、預設 0.15；A：translate.js/refine.js prompt 強制全譯）走 Workflow → 部署 → 重講失敗句確認改判 zh→翻英 → 移除 [trace] 暫時 log。（D-015 精譯指令頁亦待線上 CRUD 實測。）
+**下一步**：D-017 已完成驗證。剩餘 Phase 3 待辦：③ 韓文 + 語言對雙選單（含偵測通用化，無迫切需求前不啟動）；另 D-015 精譯指令頁仍待線上 CRUD 實測（新增/設 active/講含指令的話看第三行風格）。可調項：`LANG_CJK_THRESHOLD`（現場若覺得方向判斷需微調可在 Zeabur 改，預設 0.15）。
 **注意事項**：app 的模型/供應商由 Zeabur 環境變數控制：`TRANSLATE_PROVIDER`（openai/anthropic/custom）、`TRANSLATE_MODEL`、`REFINE_MODEL`、`STT_MODEL`；STT 目前僅 OpenAI 實作，OPENAI_API_KEY 必填。真 key 永不經過對話，由使用者在 Zeabur 後台填。`STT_LANGUAGE`：單語為主現場可設（如 `zh`），雙語輪流現場留空（auto-detect）。`BASIC_AUTH_USERS`：未設＝全站開放（程式正常運行但無驗證）；設多組 `user:pass` 後保護靜態頁、`/api/*` 及 WebSocket `/ws`；Basic Auth 無正式登出，需關閉瀏覽器或清除憑證。開發用 workflow 模式且 subagent 要做模型分配（CLAUDE.md Development conventions）。
 
 ---

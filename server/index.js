@@ -298,7 +298,6 @@ wss.on('connection', (clientWs) => {
         // draft: STT 回報轉錄中暫定文字（已累積全文）
         // 中文 draft 同樣轉繁體，英文字元不受影響
         onDraft: (itemId, text) => {
-          console.log(`[trace] draft item=${itemId} len=${text.length} t=${new Date().toISOString()} head=${JSON.stringify(text.slice(0, 20))}`);
           send({ type: 'draft', itemId, text: toTraditional(text) });
         },
 
@@ -312,7 +311,6 @@ wss.on('connection', (clientWs) => {
             }
 
             const lang = detectLang(text);
-            console.log(`[trace] final item=${itemId} lang=${lang} t=${new Date().toISOString()} text=${JSON.stringify(text)}`);
             // 中文原文：轉繁體後再送前端與後續翻譯
             const finalText = lang === 'zh' ? toTraditional(text) : text;
             const ts = new Date()
@@ -325,9 +323,7 @@ wss.on('connection', (clientWs) => {
             // 2. 翻譯（使用已轉繁體的 finalText 作為原文）
             let translatedText = '';
             try {
-              console.log(`[trace] translate.in lang=${lang} t=${new Date().toISOString()} src=${JSON.stringify(finalText)}`);
               translatedText = await translate(finalText, lang);
-              console.log(`[trace] translate.out t=${new Date().toISOString()} out=${JSON.stringify(translatedText)}`);
             } catch (err) {
               console.error('[translate] error:', err.message);
               send({ type: 'error', message: `翻譯失敗：${err.message}` });
@@ -478,7 +474,6 @@ wss.on('connection', (clientWs) => {
         // 記錄本段發言的觸發模式（manual / auto），供後續 log 使用
         session.audioMode = typeof msg.mode === 'string' ? msg.mode : null;
         session.active = true;
-        console.log(`[trace] audio.start mode=${session.audioMode} t=${new Date().toISOString()}`);
         send({ type: 'status', state: 'listening' });
         break;
       }
@@ -486,7 +481,6 @@ wss.on('connection', (clientWs) => {
       case 'audio.stop': {
         if (!session.active) return;
         session.active = false;
-        console.log(`[trace] audio.stop t=${new Date().toISOString()}`);
         // 提交音訊，觸發 OpenAI 轉錄 → onFinal callback
         session.stt?.commit();
         // status 會在 onFinal 完成後更新為 processing → ready
