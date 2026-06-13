@@ -4,7 +4,7 @@
 
 ## 📌 目前狀態（每次更新時覆寫此區塊，不要往下追加）
 
-最後更新：2026-06-13（STT/翻譯調參 backlog 整理進 Roadmap）
+最後更新：2026-06-13（自訂 Refine Prompt 管理頁設計定案 + 導覽 bug 記錄，D-015）
 
 **所在階段**：Zeabur 部署完成、自動化測試全過、wss 修復上線、真 key 已填（REFINE_MODEL 使用者改為 gpt-5.5）→ 等線上語音實測
 **怎麼跑**：線上 https://whisper-realtime-leon.zeabur.app ；本機 PowerShell `npm start`（port 3100）→ http://localhost:3100
@@ -31,6 +31,12 @@
 - [ ] **線上語音實測 Route A + Route B 精準翻譯（含 Glossary 術語套用、translation_logs 寫入確認） ← 現在卡在這**
 - [ ] Zeabur 平台層存取保護（basic auth / IP 限制，部署驗證 OK 後設定）
 - [ ] Phase 3：韓文 + 語言對雙選單（PRD §7.10）
+- [ ] **自訂 Refine Prompt 管理頁（精譯指令）+ topbar 導覽修復**（設計已定案 D-015，待實作）：
+  - 功能：類似 Glossary 的頁面，讓使用者對 Route B refine model 下自訂指令（先讀完整句→依意圖重寫→去口語化等）
+  - 決策：**加在硬規則之上**（保留繁體/glossary/只回譯文/保留數字單位，最末重申不可覆蓋）｜**多組具名 prompt 選一個 active**（direction-agnostic）｜**topbar 加兩個連結**（詞彙表、精譯指令）
+  - 沿用 glossary 架構：新表 `refine_prompts` + `/api/refine-prompts` CRUD + `refine-prompts.html/js` + 無 DB graceful degrade（回退現行寫死預設）；注入點 refine.js `buildSystemPrompt`(:306)
+  - 附帶修復導覽 bug：主畫面「⚙ 設定」是空殼（無 handler）、主畫面無進 Glossary 連結（須改 index.html topbar）
+  - 實作另開步驟走 Workflow
 
 **Backlog（待執行，未排定；線上實測後再評估是否做）**：
 
@@ -40,6 +46,23 @@
 
 **下一步**：(1) 使用者開 https://whisper-realtime-leon.zeabur.app 做線上語音實測（Route A 轉錄/翻譯、Route B 精譯出現第三行 [Refined]、Glossary：說含「隔離區」的句子應譯出 quarantine zone；實測時請用無痕視窗確認首次載入 Auto 模式直接可用；可設 REFINE_REASONING_EFFORT=low 加速精譯）；若現場幾乎只有中文，可試設 STT_LANGUAGE=zh 觀察辨識精度改善；(2) OK 後設 Zeabur 平台層存取保護（basic auth / IP 限制）
 **注意事項**：app 的模型/供應商由 Zeabur 環境變數控制：`TRANSLATE_PROVIDER`（openai/anthropic/custom）、`TRANSLATE_MODEL`、`REFINE_MODEL`、`STT_MODEL`；STT 目前僅 OpenAI 實作，OPENAI_API_KEY 必填。真 key 永不經過對話，由使用者在 Zeabur 後台填。`STT_LANGUAGE`：單語為主現場可設（如 `zh`），雙語輪流現場留空（auto-detect）。開發用 workflow 模式且 subagent 要做模型分配（CLAUDE.md Development conventions）。
+
+---
+
+## 2026-06-13 — 自訂 Refine Prompt 管理頁設計定案 + 導覽 bug
+
+**導覽 bug（待修）**：主畫面 `index.html:28` 的「⚙ 設定」是裝飾性 span、app.js 無點擊 handler（按了沒反應）；主畫面**沒有任何進 Glossary 的連結**，只能手動打 `/glossary.html` URL。反向（glossary→主畫面）正常（glossary.html:261 有 `<a href="index.html">`）。另 D-004 規劃的進階設定頁從未實作，「⚙ 設定」其實是該頁的空殼。
+
+**新功能設計定案（D-015）**：使用者要一個類似 Glossary 的「精譯指令」管理頁，對 Route B refine model 下自訂 prompt（例：先讀完整句→依使用者意圖重寫→去除口語化字）。現況 refine.js:87-141 的 system prompt 100% 寫死。三個決策：
+1. **加在硬規則之上**（additive）：保留繁體/OpenCC、必套 glossary、只回譯文、保留數字單位等不可破壞規則，自訂指令當額外段，硬規則在 prompt 最末重申以防被覆蓋。
+2. **多組具名 prompt + 選一個 active**：指令庫可存多組，單一生效；direction-agnostic。
+3. **topbar 加兩個連結**：詞彙表 / 精譯指令。
+
+**實作規格**（沿用 glossary 架構）：新表 `refine_prompts` + `/api/refine-prompts` CRUD + `refine-prompts.html/js` + graceful degrade（無 DB 回退現行寫死預設）；注入點 refine.js `buildSystemPrompt`(:306)。詳見 D-015 與 dashboard 待實作項。
+
+**本次動作**：純文件（dashboard 待實作項 + 本條目 + D-015）。**未實作任何功能**。
+
+**下一步**：主線仍是線上語音實測；此功能實作另開步驟走 Workflow（使用者指示時）。
 
 ---
 

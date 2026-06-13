@@ -244,3 +244,34 @@ Threshold % ↔ dB 對應：0% = -50dB，100% = 0dB，線性對映（60% ≈ -20
 - `STT_MIN_UTTERANCE_MS`（過濾極短誤觸發雜訊卡片）與 `STT_CHUNK_MS`（前端 append 塊大小可調）：**程式碼未實作**，需寫碼（前者需 server commit gating + openai-stt.js 新增 `clear()`，後者需改 pcm-worklet.js/audio.js）。加 Zeabur 變數無效。價值/成本權衡後先擱置，待線上語音實測後再決定是否執行。
 - `SILENCE_DURATION`：幽靈變數——PROTOCOL 曾列出但 server 從不讀取，靜音 hold-off 實際由前端設定頁滑桿控制。待辦：接成真的環境變數，或從文件移除以免誤會。
 - 區分清楚：上述為 C 類（需寫碼）；另有 B 類變數（`TRANSLATE_REASONING_EFFORT`/`REFINE_REASONING_EFFORT`/`STT_PROMPT` 等）程式碼已支援，只是未加進 Zeabur 面板、跑預設值，隨時可加，非 backlog 功能項。詳見 PROGRESS.md 2026-06-13 條目。
+
+---
+
+## D-015：自訂 Refine Prompt 管理頁設計（精譯指令）
+
+**日期**：2026-06-13（設計定案，待實作）
+
+**背景**：Route B 精準翻譯的 system prompt 目前 100% 寫死於 `server/refine.js:87-141`（`buildSystemPrompt`），無外部設定點。使用者希望能像 Glossary 一樣，自行對 refine model 下指令（例：先讀完整句→依使用者意圖重寫→去除口語化字詞），且需求會隨現場/用途變動，故要可管理。
+
+**決策**：
+1. **作用方式＝加在硬規則之上（additive）**：保留系統內建不可破壞規則（台灣正體繁體輸出＋OpenCC、必套 glossary、**只回傳譯文無解釋/標籤/引號**、保留數字與單位），自訂指令作為額外「風格/意圖」段注入；硬規則在 prompt 最末重申，確保自訂指令無法覆蓋。
+2. **粒度＝多組具名 prompt + 選一個 active**：指令庫可存多組（各有名稱），同時只有一組生效（`is_active`）；direction-agnostic（套用所有翻譯方向）。
+3. **導覽＝主畫面 topbar 加兩個連結**（詞彙表→glossary.html、精譯指令→refine-prompts.html）。
+
+**理由**：
+- additive 而非整段取代——避免使用者誤刪「只回譯文」「繁體」等規則導致第三行 [Refined] 輸出格式或 OpenCC 後處理損壞。
+- 具名庫選一啟用——比單一全域文字更彈性（可備多套切換），又比 per-session 切換簡單（本期先做全域單一 active）。
+- 沿用 Glossary 既有架構（DB 表 + REST CRUD + 管理頁 + graceful degrade），不重造輪子、UX 一致。
+
+**實作規格（待執行）**：
+- DB 新表 `refine_prompts`（仿 `glossary_terms`）：`id, name, prompt_text, is_active, enabled, created_at, updated_at`；設 active 時清除其他 active。
+- DB 函式：list/create/update/delete + `getActiveRefinePrompt()`；無 DB 回 null（沿用 `isDbEnabled`）。
+- REST `/api/refine-prompts` GET/POST/PUT/DELETE（仿 `/api/glossary`，套 `requireDb`）。
+- 前端 `public/refine-prompts.html` + `refine-prompts.js`（仿 glossary 頁），含 503 離線降級。
+- 注入點：`refine.js` `buildSystemPrompt`（呼叫於 :306）——有 active 則注入其文字並最末重申硬規則；無 active 或無 DB → 維持現行寫死預設（即現有 prompt 當 fallback）。
+- 附帶修復導覽 bug：`index.html` topbar「⚙ 設定」目前是無 handler 空殼、且主畫面無進 Glossary 連結；本功能會在 topbar 補兩個連結。「⚙ 設定」對應的 D-004 進階設定頁仍列 backlog。
+
+**否決方案**：
+- 整段取代式 prompt：否決，易破壞不可破壞規則導致輸出損壞。
+- 單一全域純文字（不具名）：否決，使用者要可備多套切換。
+- per-session 不同 prompt：暫緩（本期全域單一 active；之後若需要再擴充 WS settings 帶 `refinePromptId`）。
