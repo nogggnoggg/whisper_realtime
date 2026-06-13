@@ -4,10 +4,18 @@
 
 ## 📌 目前狀態（每次更新時覆寫此區塊，不要往下追加）
 
-最後更新：2026-06-13（補多語言偵測通用化設計原則進 D-011；Phase 4 實作前須拍板 per-script 方向）
+最後更新：2026-06-13（dashboard 補「每日啟動 SOP」、修正過時的所在階段、收斂下一步＝驗 D-015）
 
-**所在階段**：Zeabur 部署完成、自動化測試全過、wss 修復上線、真 key 已填（REFINE_MODEL 使用者改為 gpt-5.5）→ 等線上語音實測
-**怎麼跑**：線上 https://whisper-realtime-leon.zeabur.app ；本機 PowerShell `npm start`（port 3100）→ http://localhost:3100
+**所在階段**：v1 核心已上線並實測通過（Route A/B + Glossary + Basic Auth + STT 參數化）；線上語音實測已過。Phase 3 進行中：D-015 精譯指令頁已實作（待線上 CRUD 實測）、D-017 中英夾雜 bug 已修並驗證。下一個動作見最底「下一步」。
+**怎麼跑**：線上 https://whisper-realtime-leon.zeabur.app （Basic Auth 已開，需帳密）；本機 PowerShell `npm start`（port 3100）→ http://localhost:3100
+
+**🔁 每日啟動 SOP（使用者說「請 check roadmap」時，照此跑）**：
+1. 讀本 dashboard → 用幾行回報「目前進度 + 建議下一步 + 其他可選項」，等使用者選。
+2. 牽涉釐清/決策 → 先討論；若可能與 `DECISIONS.md` 既有決策衝突，先確認不衝突（不可默默推翻）。
+3. 若要動 Roadmap（範圍/優先序/決策）→ **先改 Roadmap 再執行**（使用者慣例）。
+4. 實作 → 用 **Workflow**（subagent 依難度分配模型、review 用最聰明的；fable 不可用時用 opus）。
+5. 完成 → **commit + push**（push 會觸發 Zeabur 自動部署）；程式碼與 dashboard/DECISIONS **同一 commit 同步**。
+6. 需要時用 Zeabur MCP 確認部署 RUNNING + 線上行為。真 key/帳密由使用者在 Zeabur 後台設，永不經過對話。
 
 **整體 Checklist**：
 
@@ -57,7 +65,8 @@
 - [ ] (需寫碼/之後評估) 升級存取保護為 session/cookie 登入（方案 C）：真正登入頁 + 登出按鈕 + 閒置逾時失效 + 關瀏覽器清除憑證。動機＝目前 Basic Auth 無真正登出、憑證快取到「瀏覽器關閉」才清（關分頁不清）、server 無法控制有效期或強制清除（見 D-016）。注意：「關分頁瞬間失效」即使 session 也難 100% 保證，能做到的是登出/閒置逾時/關瀏覽器清
 - [ ] (低成本/之後評估) `LANG_CJK_THRESHOLD` 調整 UI（設定頁欄位/滑桿）：D-017 本期用環境變數，使用者原想要像 glossary 那樣點進去調的 UI，留待併 D-004 ⚙設定頁或 Phase 4 一起做
 
-**下一步**：D-017 已完成驗證。剩餘 Phase 3 待辦：③ 韓文 + 語言對雙選單（含偵測通用化，無迫切需求前不啟動）；另 D-015 精譯指令頁仍待線上 CRUD 實測（新增/設 active/講含指令的話看第三行風格）。可調項：`LANG_CJK_THRESHOLD`（現場若覺得方向判斷需微調可在 Zeabur 改，預設 0.15）。
+**下一步（建議，唯一未驗收項）**：**線上實測 D-015 精譯指令頁**——開 /refine-prompts.html（topbar「精譯指令」連結）→ 新增一組指令 → 設為 active → 回主畫面開精準翻譯、講一句 → 看第三行 [Refined] 有沒有照指令風格；順便試編輯/刪除/切 active。
+　其餘：③ 韓文 + 語言對雙選單（無迫切需求前不啟動；**實作前先拍板 D-011 偵測通用化開放問題**）。backlog 見下。可調項：`LANG_CJK_THRESHOLD`（中↔英方向微調，Zeabur 改，預設 0.15）。
 **注意事項**：app 的模型/供應商由 Zeabur 環境變數控制：`TRANSLATE_PROVIDER`（openai/anthropic/custom）、`TRANSLATE_MODEL`、`REFINE_MODEL`、`STT_MODEL`；STT 目前僅 OpenAI 實作，OPENAI_API_KEY 必填。真 key 永不經過對話，由使用者在 Zeabur 後台填。`STT_LANGUAGE`：單語為主現場可設（如 `zh`），雙語輪流現場留空（auto-detect）。`BASIC_AUTH_USERS`：未設＝全站開放（程式正常運行但無驗證）；設多組 `user:pass` 後保護靜態頁、`/api/*` 及 WebSocket `/ws`；Basic Auth 無正式登出，需關閉瀏覽器或清除憑證。開發用 workflow 模式且 subagent 要做模型分配（CLAUDE.md Development conventions）。
 
 ---
