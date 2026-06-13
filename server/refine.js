@@ -115,6 +115,7 @@ function buildSystemPrompt(sourceLang, targetLang, glossaryTerms, context, custo
     `- Preserve all numbers, units of measurement, and technical terms exactly as written.`,
     `- Apply every glossary term listed below precisely as specified.`,
     `- Do not add any content not present in the original text.`,
+    `- The input may be code-switched (mixed languages). Translate the ENTIRE utterance into ${targetLangLabel}, including any words already written in other languages. The output MUST be entirely in ${targetLangLabel}. Never return the source text unchanged or leave source-language words untranslated.`,
   ];
 
   if (targetLang === 'zh') {
@@ -151,6 +152,7 @@ function buildSystemPrompt(sourceLang, targetLang, glossaryTerms, context, custo
       `- Output Traditional Chinese (Taiwan) when the target language is zh (臺灣正體繁體中文).`,
       `- Apply all glossary terms exactly as specified.`,
       `- Preserve all numbers and units of measurement exactly as written.`,
+      `- Translate the ENTIRE utterance into ${targetLangLabel}, even if the input is code-switched. The output MUST be entirely in ${targetLangLabel} with no source-language words left untranslated.`,
     );
   }
 

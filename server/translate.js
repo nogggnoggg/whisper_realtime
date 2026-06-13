@@ -65,6 +65,7 @@ function buildSystemPrompt(sourceLang) {
     '- Use natural, concise spoken language suitable for a factory environment.',
     '- Preserve all numbers, units of measurement, and technical terms exactly as written.',
     '- Do not add any content not present in the original text.',
+    `- The input may be code-switched (mixed languages). Translate the ENTIRE utterance into ${targetLangName}, including any words already written in other languages. The output MUST be entirely in ${targetLangName}. Never return the source text unchanged or leave source-language words untranslated.`,
   ].join('\n');
 }
 

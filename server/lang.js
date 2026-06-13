@@ -3,11 +3,20 @@
  *
  * 規則（依 PROTOCOL.md §6.3）：
  *   CJK 統一漢字（U+4E00–U+9FFF）及擴充 A（U+3400–U+4DBF）字元
- *   佔非空白字元總數 >50% → "zh"，否則 → "en"
+ *   佔非空白字元總數 > CJK_THRESHOLD → "zh"，否則 → "en"
  *   假名（片假名、平假名）不計入 CJK 統計。
+ *
+ *   CJK_THRESHOLD 預設 0.15（低門檻，讓中英 code-switch 句子仍判中文方）；
+ *   可透過環境變數 LANG_CJK_THRESHOLD 覆寫（趨近 0 → 含任何中文字即判中文方）。
  */
 
 import { fileURLToPath } from 'url';
+
+// 可調門檻：CJK 字元佔非空白字元的比例超過此值 → 判為中文方（翻英）
+// 安全 parse：允許 0；未設 / 空字串 / NaN 時 fallback 0.15
+const _rawThreshold = process.env.LANG_CJK_THRESHOLD;
+const _t = (_rawThreshold == null || _rawThreshold.trim() === '') ? NaN : Number(_rawThreshold);
+const CJK_THRESHOLD = Number.isFinite(_t) ? _t : 0.15;
 
 /**
  * 偵測文字語言方向
@@ -31,7 +40,10 @@ export function detectLang(text) {
     }
   }
 
-  return cjkCount / nonWS.length > 0.5 ? 'zh' : 'en';
+  // CJK 佔比 > 門檻 → 中文方（翻英）；否則英文方（翻中）。
+  // 門檻預設 0.15（低門檻，讓中文夾英文的句子仍判中文方）；
+  // 設更低趨近 0 = 含任何中文字即中文方。
+  return cjkCount / nonWS.length > CJK_THRESHOLD ? 'zh' : 'en';
 }
 
 // ---- 自測：node server/lang.js --------------------------------------------
@@ -57,6 +69,11 @@ if (process.argv[1] === __filename) {
       text: '今天氣溫很高要注意安全戴好 PPE 才能進入作業區。',
       expected: 'zh',
       desc: '中文為主（含英文縮寫）',
+    },
+    {
+      text: 'please幫我check一下。 the shipment,然後update狀態。',
+      expected: 'zh',
+      desc: 'code-switch（英文框架夾中文，CJK ≈ 20% > 0.15 → zh）',
     },
   ];
 

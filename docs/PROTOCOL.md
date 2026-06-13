@@ -197,8 +197,10 @@ Server → Client: {"type":"status","state":"ready"}
 
 1. 計算轉錄文字中的 CJK 字元數（Unicode 區段：U+4E00–U+9FFF 基本漢字、U+3400–U+4DBF 擴充 A）。
 2. 假名（片假名、平假名）**不計入** CJK 統計。
-3. CJK 字元數 > 非空白字元總數的 50% → 判定為 **`"zh"`**（中文發言）。
+3. CJK 字元佔比（CJK 字元數 ÷ 非空白字元總數）> **`LANG_CJK_THRESHOLD`（預設 0.15）** → 判定為 **`"zh"`**（中文發言）。
 4. 否則 → 判定為 **`"en"`**（英文發言）。
+
+> **D-017 說明**：門檻從舊版寫死的 >50% 調降為預設 0.15，使「中文夾英文術語」的 code-switch 句子（如「這批 lot number 要 hold 住」）能正確判為中文方向送去翻英，避免翻錯邊。門檻值由環境變數 `LANG_CJK_THRESHOLD` 控制，設趨近 0 則「含任何 CJK 字即判中文方」。
 
 ### 6.4 Threshold % ↔ dB 換算
 
@@ -252,6 +254,7 @@ Standby（不送音訊）
 | `TRANSLATE_REASONING_EFFORT` | gpt-5 系列 Route A 翻譯的 reasoning_effort 值（none/low/medium/high/xhigh/minimal，模型不支援時自動移除重試） | `minimal` |
 | `STT_LANGUAGE` | 來源語言提示，單一 ISO-639-1 碼如 `zh`/`en`；**預設留空＝auto-detect**；雙語輪流請留空，僅單語為主的現場才設 | （留空） |
 | `BASIC_AUTH_USERS` | HTTP Basic Auth 帳密，格式 `user1:pass1,user2:pass2`（多組以逗號分隔）；**密碼可含冒號但不可含逗號**（逗號為帳密組分隔符，會被切斷）；**未設＝全站開放**（程式正常運行但無驗證）；設定後保護靜態頁、`/api/*` REST 端點及 WebSocket `/ws`；`GET /healthz` 豁免驗證；無正式登出（Basic Auth 協定限制，需關閉瀏覽器或清除瀏覽器憑證） | （未設＝停用） |
+| `LANG_CJK_THRESHOLD` | 中↔英語言方向偵測門檻（0–1）：轉錄文字 CJK 字元佔比 > 此值 → 判中文方（翻英），否則英文方（翻中）。預設 0.15（低門檻，使中文夾英文術語的 code-switch 句子仍判中文方，修正翻錯邊問題）；設趨近 0＝含任何中文字即判中文方。僅適用中↔英語言對；多語言支援見 Phase 4。詳見 D-017。 | `0.15` |
 
 載入方式：`dotenv`，`.env` 檔不進 git。
 
