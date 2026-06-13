@@ -4,7 +4,7 @@
 
 ## 📌 目前狀態（每次更新時覆寫此區塊，不要往下追加）
 
-最後更新：2026-06-13（app 內 HTTP Basic Auth 實作完成，D-016；存取保護從 Zeabur 平台層改為 app 內 middleware）
+最後更新：2026-06-13（Basic Auth 已上線並驗證生效：BASIC_AUTH_USERS 已設、線上 / 與 /api 回 401、/healthz 200）
 
 **所在階段**：Zeabur 部署完成、自動化測試全過、wss 修復上線、真 key 已填（REFINE_MODEL 使用者改為 gpt-5.5）→ 等線上語音實測
 **怎麼跑**：線上 https://whisper-realtime-leon.zeabur.app ；本機 PowerShell `npm start`（port 3100）→ http://localhost:3100
@@ -29,7 +29,7 @@
 - [x] 使用者把 Zeabur app 的 OPENAI_API_KEY 換成真 key（並自行把 REFINE_MODEL 改為 gpt-5.5）
 - [x] STT_LANGUAGE 環境變數實作（單語現場可設 ISO-639-1 碼；雙語留空）；PROTOCOL.md §6.6 / §6.6.1 全部可調 STT 參數補齊說明（合法值、建議值、Zeabur 設定方式）（D-014）
 - [x] **線上語音實測 Route A + Route B 精準翻譯（含 Glossary 術語套用、translation_logs 寫入確認）**（已通過）
-- [x] app 內 HTTP Basic Auth（BASIC_AUTH_USERS，D-016）（待使用者於 Zeabur 設 BASIC_AUTH_USERS 才實際上鎖；未設＝全站開放）
+- [x] app 內 HTTP Basic Auth（BASIC_AUTH_USERS，D-016）—**已於 Zeabur 設 BASIC_AUTH_USERS 並線上驗證生效（2026-06-13）：/ 與 /api/* 回 401、/healthz 200、部署 6a2d5563 RUNNING**
 - [ ] Phase 3：韓文 + 語言對雙選單（PRD §7.10）
 - [ ] **自訂 Refine Prompt 管理頁（精譯指令）+ topbar 導覽修復**（設計已定案 D-015，待實作）：
   - 功能：類似 Glossary 的頁面，讓使用者對 Route B refine model 下自訂指令（先讀完整句→依意圖重寫→去口語化等）
@@ -44,7 +44,7 @@
 - [ ] (需寫碼) `STT_CHUNK_MS` 可調（前端 append 塊大小，現寫死 ~20ms，需改 pcm-worklet.js/audio.js）+ 修 `SILENCE_DURATION` 幽靈變數（PROTOCOL 列過但 server 從不讀；靜音實際由前端設定頁滑桿控制 → 接成真的或從文件移除以免誤會）
 - [ ] (低成本/面板可見性) 視需要把「已支援但未上 Zeabur」的變數以預設值加進面板：`TRANSLATE_REASONING_EFFORT`(minimal)、`REFINE_REASONING_EFFORT`(minimal；gpt-5.5 不支援會自動移除)；換供應商才需 `ANTHROPIC_API_KEY`/`TRANSLATE_BASE_URL`/`TRANSLATE_API_KEY`；`STT_PROMPT`(僅 gpt-4o-transcribe)。這類**程式碼已支援**，只是沒加面板，跑預設值
 
-**下一步**：(1) 使用者於 Zeabur app service → Variables 新增 `BASIC_AUTH_USERS=user1:pass1`（可多組），重啟後用無痕視窗驗證跳帳密提示；(2) 繼續推進「自訂 Refine Prompt 管理頁（精譯指令）+ topbar 導覽修復」（D-015，設計已定案，待實作）。
+**下一步**：推進「自訂 Refine Prompt 管理頁（精譯指令）+ topbar 導覽修復」（D-015，設計已定案，待實作，走 Workflow）。（Basic Auth 已上線驗證生效，此步完成。）
 **注意事項**：app 的模型/供應商由 Zeabur 環境變數控制：`TRANSLATE_PROVIDER`（openai/anthropic/custom）、`TRANSLATE_MODEL`、`REFINE_MODEL`、`STT_MODEL`；STT 目前僅 OpenAI 實作，OPENAI_API_KEY 必填。真 key 永不經過對話，由使用者在 Zeabur 後台填。`STT_LANGUAGE`：單語為主現場可設（如 `zh`），雙語輪流現場留空（auto-detect）。`BASIC_AUTH_USERS`：未設＝全站開放（程式正常運行但無驗證）；設多組 `user:pass` 後保護靜態頁、`/api/*` 及 WebSocket `/ws`；Basic Auth 無正式登出，需關閉瀏覽器或清除憑證。開發用 workflow 模式且 subagent 要做模型分配（CLAUDE.md Development conventions）。
 
 ---
@@ -61,7 +61,9 @@
 
 **取捨說明**：Basic Auth 無正式登出機制（瀏覽器快取帳密，登出需關閉瀏覽器/清除憑證），此為協定本質限制；內部工廠工具環境可接受，UI 加說明小字。
 
-**下一步**：使用者於 Zeabur app service → Variables 設 `BASIC_AUTH_USERS=user1:pass1`，重啟後用無痕視窗驗證跳出帳密提示框。
+**線上驗證（2026-06-13）**：使用者已於 Zeabur 設 `BASIC_AUTH_USERS`（多組帳密）；curl 線上確認 `GET /` 與 `/api/glossary` 回 401（含 `WWW-Authenticate: Basic`）、`/healthz` 回 200、部署 6a2d5563 RUNNING。保護正式生效。註：Basic Auth 無自製登入頁，使用瀏覽器原生帳密彈窗（方案 A 取捨）。
+
+**下一步**：繼續 D-015 精譯指令管理頁 + 導覽修復（走 Workflow）。
 
 ---
 
