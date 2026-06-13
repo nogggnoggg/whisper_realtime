@@ -4,7 +4,7 @@
 
 ## 📌 目前狀態（每次更新時覆寫此區塊，不要往下追加）
 
-最後更新：2026-06-13（D-017 中英 code-switch 翻譯方向 bug 已修並線上驗證生效；[trace] 暫時 log 已移除）
+最後更新：2026-06-13（補多語言偵測通用化設計原則進 D-011；Phase 4 實作前須拍板 per-script 方向）
 
 **所在階段**：Zeabur 部署完成、自動化測試全過、wss 修復上線、真 key 已填（REFINE_MODEL 使用者改為 gpt-5.5）→ 等線上語音實測
 **怎麼跑**：線上 https://whisper-realtime-leon.zeabur.app ；本機 PowerShell `npm start`（port 3100）→ http://localhost:3100
@@ -46,7 +46,7 @@
   - 修法：B＝`server/lang.js` 門檻改環境變數 `LANG_CJK_THRESHOLD`（預設 0.15）；A＝`translate.js`/`refine.js` prompt 強制整句全譯、夾雜外語一併翻、不照抄。
   - **線上驗證**：重講「please幫我check一下shipment, 然後update狀態。」→ trace 顯示 `lang=zh` → 翻成 "Please help me check the shipment, then update the status."（不再吐回中文）。診斷用 `[trace]` log 已移除（commit 收尾）。
   - 範圍：僅中↔英；多語言 per-script 偵測留 Phase 4（見 ③、D-011、D-017）。
-- [ ] **③ 韓文 + 語言對雙選單**（PRD §7.10、D-011；無迫切韓文需求前不啟動）；含**偵測通用化（per-script，CJK/諺文/拉丁）** — D-017 的多語言部分併此處理
+- [ ] **③ 韓文 + 語言對雙選單**（PRD §7.10、D-011；無迫切韓文需求前不啟動）；含**偵測通用化（per-script，CJK/諺文/拉丁）** — D-017 的多語言部分併此處理。**⚠ implement 前須先拍板 D-011「偵測通用化設計原則」的開放問題**（說話者切換 vs 自動猜方向、腳本重疊中↔日、第三語言闖入 code-switch、LANG_CJK_THRESHOLD 退場）——`LANG_CJK_THRESHOLD` 只適用中↔英，不可硬擴到其他語言對
 - [ ] （未排程）其他 Phase 3 條目：多站別/產線設定、Safety keyword 標示、Log viewer、翻譯品質回報、Refined translation 效果分析
 
 **Backlog（待執行，未排定；線上實測後再評估是否做）**：
