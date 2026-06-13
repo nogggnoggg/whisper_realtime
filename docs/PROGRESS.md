@@ -4,7 +4,7 @@
 
 ## 📌 目前狀態（每次更新時覆寫此區塊，不要往下追加）
 
-最後更新：2026-06-13（Basic Auth 上線驗證生效；backlog 補記「可升級 session 登入（方案 C）」）
+最後更新：2026-06-13（dashboard 把 Phase 3 拆成有序子任務：① 精譯指令頁+導覽 ② 韓文語言對；不動 PRD Phase 編號）
 
 **所在階段**：Zeabur 部署完成、自動化測試全過、wss 修復上線、真 key 已填（REFINE_MODEL 使用者改為 gpt-5.5）→ 等線上語音實測
 **怎麼跑**：線上 https://whisper-realtime-leon.zeabur.app ；本機 PowerShell `npm start`（port 3100）→ http://localhost:3100
@@ -30,13 +30,20 @@
 - [x] STT_LANGUAGE 環境變數實作（單語現場可設 ISO-639-1 碼；雙語留空）；PROTOCOL.md §6.6 / §6.6.1 全部可調 STT 參數補齊說明（合法值、建議值、Zeabur 設定方式）（D-014）
 - [x] **線上語音實測 Route A + Route B 精準翻譯（含 Glossary 術語套用、translation_logs 寫入確認）**（已通過）
 - [x] app 內 HTTP Basic Auth（BASIC_AUTH_USERS，D-016）—**已於 Zeabur 設 BASIC_AUTH_USERS 並線上驗證生效（2026-06-13）：/ 與 /api/* 回 401、/healthz 200、部署 6a2d5563 RUNNING**
-- [ ] Phase 3：韓文 + 語言對雙選單（PRD §7.10）
-- [ ] **自訂 Refine Prompt 管理頁（精譯指令）+ topbar 導覽修復**（設計已定案 D-015，待實作）：
+**Phase 3（穩定版，PRD §13）— 進行中**（此里程碑含多個功能，依下列順序推進）
+
+*已完成的 Phase 3 項目：*
+- [x] Glossary 管理頁（Phase 2 期間完成）
+- [x] 基本登入＝app 內 HTTP Basic Auth（D-016，已上線驗證生效，見上）
+
+*待辦（依優先序）：*
+- [ ] **① 自訂 Refine Prompt 管理頁（精譯指令）+ 導覽修復（D-015，設計已定案，走 Workflow）← 下一步**
   - 功能：類似 Glossary 的頁面，讓使用者對 Route B refine model 下自訂指令（先讀完整句→依意圖重寫→去口語化等）
   - 決策：**加在硬規則之上**（保留繁體/glossary/只回譯文/保留數字單位，最末重申不可覆蓋）｜**多組具名 prompt 選一個 active**（direction-agnostic）｜**topbar 加兩個連結**（詞彙表、精譯指令）
   - 沿用 glossary 架構：新表 `refine_prompts` + `/api/refine-prompts` CRUD + `refine-prompts.html/js` + 無 DB graceful degrade（回退現行寫死預設）；注入點 refine.js `buildSystemPrompt`(:306)
   - 附帶修復導覽 bug：主畫面「⚙ 設定」是空殼（無 handler）、主畫面無進 Glossary 連結（須改 index.html topbar）
-  - 實作另開步驟走 Workflow
+- [ ] **② 韓文 + 語言對雙選單**（PRD §7.10、D-011；無迫切韓文需求前不啟動，排在 ① 之後）
+- [ ] （未排程）其他 Phase 3 條目：多站別/產線設定、Safety keyword 標示、Log viewer、翻譯品質回報、Refined translation 效果分析
 
 **Backlog（待執行，未排定；線上實測後再評估是否做）**：
 
