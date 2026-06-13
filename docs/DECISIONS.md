@@ -49,6 +49,8 @@ Node.js 全端（後端 Node + WebSocket，前端 vanilla JS / 輕量）
 **否決方案與原因**：
 - 程式內 PIN 登入：使用者選擇由平台層處理，降低程式複雜度
 
+> **2026-06-13 更正**：Zeabur 共享部署（Shared Server）**不提供**平台層 Basic Auth 功能；防火牆/IP 限制功能僅限 Dedicated Server 方案。本決策「由 Zeabur 平台層處理」的前提錯誤，已改為 app 內 Basic Auth middleware（見 D-016）。部署方式（GitHub 連動自動部署）維持不變。
+
 ## D-004：進階音訊設定位置
 
 **日期**：2026-06-12
@@ -275,3 +277,37 @@ Threshold % ↔ dB 對應：0% = -50dB，100% = 0dB，線性對映（60% ≈ -20
 - 整段取代式 prompt：否決，易破壞不可破壞規則導致輸出損壞。
 - 單一全域純文字（不具名）：否決，使用者要可備多套切換。
 - per-session 不同 prompt：暫緩（本期全域單一 active；之後若需要再擴充 WS settings 帶 `refinePromptId`）。
+
+---
+
+## D-016：v1 存取保護＝app 內最小 HTTP Basic Auth middleware
+
+**日期**：2026-06-13
+
+**背景**：D-003 原定由 Zeabur 平台層處理存取保護，但查證確認 Zeabur 共享部署不提供平台層 Basic Auth（防火牆/IP 限制僅 Dedicated Server 有）。原前提錯誤，改為 app 內實作最小 middleware。
+
+**決策**：
+
+1. **保護範圍**：HTTP 靜態頁（`/`、`/glossary.html`、`/refine-prompts.html` 等）、`/api/*` REST 端點、WebSocket `/ws`（透過 `verifyClient` 檢查 `Authorization` header）。
+2. **帳密設定**：環境變數 `BASIC_AUTH_USERS`，格式 `user1:pass1,user2:pass2`（支援多組帳密）；後端解析後以常數時間比對（防止時序攻擊）。
+3. **Graceful degrade（部署順序安全）**：`BASIC_AUTH_USERS` 未設（或空）→ 全站開放 + 輸出警告 log；**設定後才上鎖**。確保先 push 程式碼不會鎖死（Zeabur Variables 填帳密後才生效）。
+4. **健檢豁免**：`GET /healthz` 固定回 200，不需驗證，避免 Zeabur 健檢收到 401 誤判服務異常。
+5. **登出限制**：Basic Auth 本質無正式登出（帳密快取在瀏覽器），需關閉瀏覽器或清除憑證才能切換帳號。內部工具環境可接受；UI 放一行說明小字提示使用者。
+
+**理由**：
+- Zeabur 共享部署無任何平台層保護方案可用，in-app middleware 是最小可行路線。
+- 同一個 middleware 可同時保護 HTTP 靜態頁、REST API 與 WebSocket，保護邊界統一。
+- 常數時間比對避免 timing attack（雖為內部工具，仍為基本安全做法）。
+
+**實作要點**：
+- Node.js `server/index.js`：Express `use()` 加 Basic Auth middleware（在路由前），`verifyClient` 做 WS 握手驗證。
+- 比對函式：`crypto.timingSafeEqual(Buffer.from(a), Buffer.from(b))`。
+- `/healthz` 在 middleware 之前掛載，確保豁免。
+- Zeabur 設定步驟：app service → Variables → 新增 `BASIC_AUTH_USERS=user1:pass1` → 重啟生效。
+
+**否決方案**：
+- **Session / cookie 登入頁**：需要登入表單、session store、CSRF 防護，屬 v1 範圍外，複雜度過高；Basic Auth 已足夠內部工具需求。
+- **IP 限制**：Zeabur 共享部署不提供此功能，且工廠 IP 可能動態變化。
+- **整套自製 auth 系統（JWT / RBAC）**：PRD §12 明確列為 v1 out-of-scope。
+
+**升級路徑**：日後需要正式登出，可改為 cookie/session 機制；保護邊界（`/api/*`、`/ws`、靜態頁）不變，只換 middleware 實作，不影響其他程式碼。

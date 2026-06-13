@@ -22,6 +22,7 @@ import { translate } from './translate.js';
 import { refine } from './refine.js';
 import { detectLang } from './lang.js';
 import { toTraditional } from './zh-convert.js';
+import { expressBasicAuth, verifyBasicAuthUpgrade, isAuthEnabled } from './basic-auth.js';
 import {
   isDbEnabled,
   initDb,
@@ -57,6 +58,8 @@ if (!API_KEY) {
 
 const app = express();
 app.use(express.json());
+app.get('/healthz', (req, res) => res.status(200).send('ok')); // Zeabur 健康檢查，不需驗證
+app.use(expressBasicAuth); // 保護靜態頁與所有 /api/*
 app.use(express.static(join(__dirname, '..', 'public')));
 
 // ── REST API：詞彙表 ──────────────────────────────────────────────────────────
@@ -132,7 +135,14 @@ const httpServer = createServer(app);
 
 // ── WebSocket server ─────────────────────────────────────────────────────────
 
-const wss = new WebSocketServer({ server: httpServer, path: '/ws' });
+const wss = new WebSocketServer({
+  server: httpServer,
+  path: '/ws',
+  verifyClient: (info, cb) => {
+    if (verifyBasicAuthUpgrade(info.req)) cb(true);
+    else cb(false, 401, 'Unauthorized');
+  },
+});
 
 wss.on('connection', (clientWs) => {
   // Per-connection session state
@@ -425,4 +435,9 @@ try {
 httpServer.listen(PORT, () => {
   console.log(`Server running → http://localhost:${PORT}`);
   console.log(`WebSocket     → ws://localhost:${PORT}/ws`);
+  if (isAuthEnabled()) {
+    console.log('Basic Auth 已啟用');
+  } else {
+    console.warn('⚠  警告：BASIC_AUTH_USERS 未設，全站開放（無任何存取保護）');
+  }
 });

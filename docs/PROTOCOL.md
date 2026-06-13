@@ -251,6 +251,7 @@ Standby（不送音訊）
 | `REFINE_REASONING_EFFORT` | gpt-5 系列精準翻譯的 reasoning_effort 值（none/low/medium/high/xhigh/minimal，模型不支援時自動移除重試） | `minimal` |
 | `TRANSLATE_REASONING_EFFORT` | gpt-5 系列 Route A 翻譯的 reasoning_effort 值（none/low/medium/high/xhigh/minimal，模型不支援時自動移除重試） | `minimal` |
 | `STT_LANGUAGE` | 來源語言提示，單一 ISO-639-1 碼如 `zh`/`en`；**預設留空＝auto-detect**；雙語輪流請留空，僅單語為主的現場才設 | （留空） |
+| `BASIC_AUTH_USERS` | HTTP Basic Auth 帳密，格式 `user1:pass1,user2:pass2`（多組以逗號分隔）；**密碼可含冒號但不可含逗號**（逗號為帳密組分隔符，會被切斷）；**未設＝全站開放**（程式正常運行但無驗證）；設定後保護靜態頁、`/api/*` REST 端點及 WebSocket `/ws`；`GET /healthz` 豁免驗證；無正式登出（Basic Auth 協定限制，需關閉瀏覽器或清除瀏覽器憑證） | （未設＝停用） |
 
 載入方式：`dotenv`，`.env` 檔不進 git。
 
@@ -481,7 +482,7 @@ Standby（不送音訊）
 - 刪除：行末刪除按鈕，DELETE 提交
 - 導出：CSV 下載（備份用）
 
-**存取控制**：由 Zeabur 平台層級處理（basic auth / IP 限制），本檔無額外驗證。
+**存取控制**：由後端 HTTP Basic Auth middleware 統一處理（環境變數 `BASIC_AUTH_USERS`，D-016）；`/healthz` 豁免。
 
 ---
 
