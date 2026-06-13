@@ -239,3 +239,8 @@ Threshold % ↔ dB 對應：0% = -50dB，100% = 0dB，線性對映（60% ≈ -20
 **否決方案與原因**：
 - 硬填單一語言（如 `zh`）：否決，中英輪流場景英語辨識精度下降，不適合預設值。
 - 完全不暴露（永遠 auto-detect）：否決，單語為主現場的使用者有真實的精度改善需求，且成本為零。
+
+**Backlog（2026-06-13 補述）— 當初收斂計畫時刻意不做、列為待辦**：
+- `STT_MIN_UTTERANCE_MS`（過濾極短誤觸發雜訊卡片）與 `STT_CHUNK_MS`（前端 append 塊大小可調）：**程式碼未實作**，需寫碼（前者需 server commit gating + openai-stt.js 新增 `clear()`，後者需改 pcm-worklet.js/audio.js）。加 Zeabur 變數無效。價值/成本權衡後先擱置，待線上語音實測後再決定是否執行。
+- `SILENCE_DURATION`：幽靈變數——PROTOCOL 曾列出但 server 從不讀取，靜音 hold-off 實際由前端設定頁滑桿控制。待辦：接成真的環境變數，或從文件移除以免誤會。
+- 區分清楚：上述為 C 類（需寫碼）；另有 B 類變數（`TRANSLATE_REASONING_EFFORT`/`REFINE_REASONING_EFFORT`/`STT_PROMPT` 等）程式碼已支援，只是未加進 Zeabur 面板、跑預設值，隨時可加，非 backlog 功能項。詳見 PROGRESS.md 2026-06-13 條目。

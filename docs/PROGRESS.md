@@ -4,7 +4,7 @@
 
 ## 📌 目前狀態（每次更新時覆寫此區塊，不要往下追加）
 
-最後更新：2026-06-13（STT_LANGUAGE 環境變數實作 + PROTOCOL §6.6 可調參數文件補齊）
+最後更新：2026-06-13（STT/翻譯調參 backlog 整理進 Roadmap）
 
 **所在階段**：Zeabur 部署完成、自動化測試全過、wss 修復上線、真 key 已填（REFINE_MODEL 使用者改為 gpt-5.5）→ 等線上語音實測
 **怎麼跑**：線上 https://whisper-realtime-leon.zeabur.app ；本機 PowerShell `npm start`（port 3100）→ http://localhost:3100
@@ -32,8 +32,28 @@
 - [ ] Zeabur 平台層存取保護（basic auth / IP 限制，部署驗證 OK 後設定）
 - [ ] Phase 3：韓文 + 語言對雙選單（PRD §7.10）
 
+**Backlog（待執行，未排定；線上實測後再評估是否做）**：
+
+- [ ] (需寫碼) `STT_MIN_UTTERANCE_MS`：server commit gating + openai-stt.js 新增 `clear()`（送 input_audio_buffer.clear），過濾極短誤觸發產生的雜訊卡片；預設關（0）。**程式碼目前未實作**，加 Zeabur 變數無效（見 D-014）
+- [ ] (需寫碼) `STT_CHUNK_MS` 可調（前端 append 塊大小，現寫死 ~20ms，需改 pcm-worklet.js/audio.js）+ 修 `SILENCE_DURATION` 幽靈變數（PROTOCOL 列過但 server 從不讀；靜音實際由前端設定頁滑桿控制 → 接成真的或從文件移除以免誤會）
+- [ ] (低成本/面板可見性) 視需要把「已支援但未上 Zeabur」的變數以預設值加進面板：`TRANSLATE_REASONING_EFFORT`(minimal)、`REFINE_REASONING_EFFORT`(minimal；gpt-5.5 不支援會自動移除)；換供應商才需 `ANTHROPIC_API_KEY`/`TRANSLATE_BASE_URL`/`TRANSLATE_API_KEY`；`STT_PROMPT`(僅 gpt-4o-transcribe)。這類**程式碼已支援**，只是沒加面板，跑預設值
+
 **下一步**：(1) 使用者開 https://whisper-realtime-leon.zeabur.app 做線上語音實測（Route A 轉錄/翻譯、Route B 精譯出現第三行 [Refined]、Glossary：說含「隔離區」的句子應譯出 quarantine zone；實測時請用無痕視窗確認首次載入 Auto 模式直接可用；可設 REFINE_REASONING_EFFORT=low 加速精譯）；若現場幾乎只有中文，可試設 STT_LANGUAGE=zh 觀察辨識精度改善；(2) OK 後設 Zeabur 平台層存取保護（basic auth / IP 限制）
 **注意事項**：app 的模型/供應商由 Zeabur 環境變數控制：`TRANSLATE_PROVIDER`（openai/anthropic/custom）、`TRANSLATE_MODEL`、`REFINE_MODEL`、`STT_MODEL`；STT 目前僅 OpenAI 實作，OPENAI_API_KEY 必填。真 key 永不經過對話，由使用者在 Zeabur 後台填。`STT_LANGUAGE`：單語為主現場可設（如 `zh`），雙語輪流現場留空（auto-detect）。開發用 workflow 模式且 subagent 要做模型分配（CLAUDE.md Development conventions）。
+
+---
+
+## 2026-06-13 — STT/翻譯調參 backlog 整理進 Roadmap
+
+**起因**：使用者在 Zeabur 面板沒看到「之前討論過的其他可調變數」，詢問是未做還是排後面 phase。grep `process.env` 盤點後分成兩類，使用者決定先記進 Roadmap 追蹤、稍後再執行。
+
+**分類（重要，避免下個 session 誤判）**：
+- **B 類＝程式碼已支援、只是沒加進 Zeabur 面板**（跑預設值，隨時可加，零程式碼）：`TRANSLATE_REASONING_EFFORT`、`REFINE_REASONING_EFFORT`、`STT_PROMPT`、`STT_LANGUAGE`、以及換供應商才需的 `ANTHROPIC_API_KEY`/`TRANSLATE_BASE_URL`/`TRANSLATE_API_KEY`。「面板看不到」≠「不能調」，只代表未覆寫預設。
+- **C 類＝程式碼根本沒做**（加 Zeabur 變數無效，需寫程式碼）：`STT_MIN_UTTERANCE_MS`、`STT_CHUNK_MS`；另 `SILENCE_DURATION` 是幽靈變數（文件有、server 從不讀，靜音由前端滑桿控制）。當初收斂計畫時刻意不做（價值/成本權衡），現列為 backlog。
+
+**本次動作**：純文件——dashboard 新增 Backlog 分組（三項未勾選）、本條目、D-014 補述。未寫任何功能程式碼、未動 Zeabur 變數。
+
+**下一步**：以線上語音實測為主；實測後再決定 backlog 是否執行（C 類要寫碼走 Workflow、B 類可隨時加 Zeabur 變數）。
 
 ---
 
