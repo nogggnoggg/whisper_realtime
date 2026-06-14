@@ -42,6 +42,8 @@ import {
   getCjkThreshold,
   listLangThresholds,
   upsertLangThreshold,
+  listLogs,
+  setLogQuality,
 } from './db.js';
 
 // ── Config ──────────────────────────────────────────────────────────────────
@@ -250,6 +252,53 @@ app.put('/api/lang-thresholds', requireDb, async (req, res) => {
     res.json(row);
   } catch (err) {
     console.error('[PUT /api/lang-thresholds]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── REST API：翻譯紀錄 ────────────────────────────────────────────────────────
+
+/**
+ * GET /api/logs?limit=&offset=&flagged=(0|1)
+ * 分頁回傳翻譯紀錄。
+ * limit: 預設 50，clamp 1..100；offset: 預設 0，>= 0；flagged=1 → 只看標記翻錯。
+ * 回傳: { rows, total, limit, offset }
+ */
+app.get('/api/logs', requireDb, async (req, res) => {
+  try {
+    const rawLimit = parseInt(req.query.limit ?? '50', 10);
+    const limit = Number.isFinite(rawLimit) ? Math.min(100, Math.max(1, rawLimit)) : 50;
+    const rawOffset = parseInt(req.query.offset ?? '0', 10);
+    const offset = Number.isFinite(rawOffset) ? Math.max(0, rawOffset) : 0;
+    const flaggedOnly = req.query.flagged === '1';
+    const { rows, total } = await listLogs({ limit, offset, flaggedOnly });
+    res.json({ rows, total, limit, offset });
+  } catch (err) {
+    console.error('[GET /api/logs]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * PATCH /api/logs/:id/quality
+ * Body: { quality_flag: boolean, quality_note?: string }
+ * 更新指定 log 的品質標記，回傳更新後的列。
+ */
+app.patch('/api/logs/:id/quality', requireDb, async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (!Number.isFinite(id)) {
+    return res.status(400).json({ error: 'id 必須為整數' });
+  }
+  const { quality_flag, quality_note } = req.body ?? {};
+  if (typeof quality_flag !== 'boolean') {
+    return res.status(400).json({ error: 'quality_flag 必須為 boolean' });
+  }
+  try {
+    const row = await setLogQuality(id, quality_flag, quality_note ?? null);
+    if (!row) return res.status(404).json({ error: '找不到指定紀錄' });
+    res.json(row);
+  } catch (err) {
+    console.error('[PATCH /api/logs/:id/quality]', err.message);
     res.status(500).json({ error: err.message });
   }
 });

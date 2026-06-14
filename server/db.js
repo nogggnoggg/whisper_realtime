@@ -18,6 +18,12 @@
  *   listLangThresholds()   → Promise<Array<{source_lang,target_lang,threshold,updated_at}>>
  *   upsertLangThreshold(sourceLang, targetLang, threshold)
  *                          → Promise<object|null>   （upsert 後列；清該對快取）
+ *   listLogs({ limit, offset, flaggedOnly })
+ *                          → Promise<{ rows:Array, total:number }>
+ *                            （rows 依 id DESC；flaggedOnly=true 時 WHERE quality_flag=true；
+ *                             無 DB → { rows:[], total:0 }）
+ *   setLogQuality(id, flag, note)
+ *                          → Promise<object|null>   （UPDATE RETURNING *；無 DB → null）
  *
  * DATABASE_URL 未設定 → isDbEnabled()=false，所有函式為安全 no-op。
  * SSL：PGSSLMODE=disable → 不加 SSL；否則先試 ssl:{rejectUnauthorized:false}，
@@ -124,6 +130,11 @@ export async function initDb() {
         created_at          timestamptz NOT NULL DEFAULT now()
       )
     `);
+
+    // 冪等遷移：為既有 translation_logs 補品質欄 + 索引
+    await pool.query(`ALTER TABLE translation_logs ADD COLUMN IF NOT EXISTS quality_flag boolean DEFAULT false`);
+    await pool.query(`ALTER TABLE translation_logs ADD COLUMN IF NOT EXISTS quality_note text`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_logs_created_at ON translation_logs(created_at DESC)`);
 
     await pool.query(`
       CREATE TABLE IF NOT EXISTS sessions (
@@ -345,6 +356,63 @@ export async function updateLogRefined(logId, refinedTranslation, glossaryUsedJs
     );
   } catch (err) {
     console.warn('[db] updateLogRefined 失敗:', err.message);
+  }
+}
+
+// ── 公開：翻譯 log 查詢 / 品質標記 ───────────────────────────────────────────
+
+/**
+ * 分頁列出翻譯 log，依 id DESC。
+ * @param {{ limit?:number, offset?:number, flaggedOnly?:boolean }} opts
+ * @returns {Promise<{ rows:Array, total:number }>}
+ */
+export async function listLogs({ limit = 50, offset = 0, flaggedOnly = false } = {}) {
+  if (!_dbEnabled || !pool) return { rows: [], total: 0 };
+  const where = flaggedOnly ? 'WHERE quality_flag = true' : '';
+  try {
+    const [dataRes, countRes] = await Promise.all([
+      pool.query(
+        `SELECT * FROM translation_logs ${where} ORDER BY id DESC LIMIT $1 OFFSET $2`,
+        [limit, offset],
+      ),
+      pool.query(
+        `SELECT count(*) FROM translation_logs ${where}`,
+      ),
+    ]);
+    return {
+      rows:  dataRes.rows,
+      total: parseInt(countRes.rows[0].count, 10),
+    };
+  } catch (err) {
+    console.warn('[db] listLogs 失敗:', err.message);
+    return { rows: [], total: 0 };
+  }
+}
+
+/**
+ * 更新翻譯 log 的品質標記與備註，回傳更新後的完整列。
+ * DB 停用時回 null。
+ *
+ * @param {number}  id
+ * @param {boolean} flag
+ * @param {string|null} note
+ * @returns {Promise<object|null>}
+ */
+export async function setLogQuality(id, flag, note = null) {
+  if (!_dbEnabled || !pool) return null;
+  try {
+    const { rows } = await pool.query(
+      `UPDATE translation_logs
+          SET quality_flag = $1,
+              quality_note = $2
+        WHERE id = $3
+        RETURNING *`,
+      [flag, note ?? null, id],
+    );
+    return rows[0] ?? null;
+  } catch (err) {
+    console.warn('[db] setLogQuality 失敗:', err.message);
+    return null;
   }
 }
 

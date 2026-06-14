@@ -399,9 +399,13 @@ Standby（不送音訊）
 | `route_a_text` | TEXT | Route A 翻譯結果 |
 | `route_b_text` | TEXT | Route B 精準翻譯結果（若啟用） |
 | `glossary_matched` | JSONB / TEXT | 本次匹配到的 Glossary 術語列表 |
+| `quality_flag` | BOOLEAN | 品質標記（預設 false；true 表示該筆翻譯被標記為翻錯或需改進） |
+| `quality_note` | TEXT | 品質備註（使用者填寫的問題說明，例「遺漏詞」「文法錯誤」等） |
 | `created_at` | TIMESTAMP | 記錄時間 |
 
 **語言對一級欄位原則**：source_lang + target_lang 必填，支援多語言查詢。
+
+**索引**：`CREATE INDEX idx_logs_created_at ON translation_logs(created_at DESC)` 加速分頁查詢。
 
 ### 7.3 Session 日誌
 
@@ -488,7 +492,7 @@ Standby（不送音訊）
 
 ### 8.2 `/api/lang-thresholds` — 語言對偵測門檻管理
 
-所有端點均套用 `requireDb` middleware：`DATABASE_URL` 未設或 DB 未連線時一律回傳 `503 Service Unavailable`（`{"error": "db not available"}`）。
+所有端點均套用 `requireDb` middleware：`DATABASE_URL` 未設或 DB 未連線時一律回傳 `503 Service Unavailable`（`{"error": "database disabled"}`）。
 
 ---
 
@@ -530,7 +534,7 @@ Standby（不送音訊）
 
 ### 8.3 `/api/refine-prompts` — 精譯指令管理
 
-所有端點均套用 `requireDb` middleware：`DATABASE_URL` 未設或 DB 未連線時一律回傳 `503 Service Unavailable`（`{"error": "db not available"}`）。
+所有端點均套用 `requireDb` middleware：`DATABASE_URL` 未設或 DB 未連線時一律回傳 `503 Service Unavailable`（`{"error": "database disabled"}`）。
 
 ---
 
@@ -595,6 +599,79 @@ Standby（不送音訊）
 
 ---
 
+### 8.4 `/api/logs` — 翻譯紀錄查詢與品質標記
+
+所有端點均套用 `requireDb` middleware：`DATABASE_URL` 未設或 DB 未連線時一律回傳 `503 Service Unavailable`（`{"error": "database disabled"}`）。
+
+**GET /api/logs**
+
+查詢翻譯紀錄（分頁）。
+
+**查詢參數**：
+- `limit`（可選）：每頁筆數，預設 50、上限 100；超出自動 clamp
+- `offset`（可選）：起始位置，預設 0；負數視為 0
+- `flagged`（可選）：0 或 1；1 表示只列品質標記為 true 的筆數
+
+**回應**：
+```json
+{
+  "rows": [
+    {
+      "id": 1,
+      "session_id": "sess_abc123",
+      "item_id": "item_001",
+      "source_lang": "zh",
+      "target_lang": "en",
+      "source_text": "這批先不要出貨，等品保確認。",
+      "rt_translation": "Do not ship this batch yet. Wait for QA.",
+      "refined_translation": "Do not ship this batch. Await QA confirmation.",
+      "quality_flag": false,
+      "quality_note": null,
+      "created_at": "2026-06-14T10:29:00Z"
+    }
+  ],
+  "total": 42,
+  "limit": 50,
+  "offset": 0
+}
+```
+
+- `rows`：該頁的翻譯記錄陣列（依 `id DESC` 倒序）
+- `total`：符合篩選條件的全部筆數
+- `limit`、`offset`：確認的分頁參數（clamp 後）
+
+---
+
+**PATCH /api/logs/:id/quality** — 更新翻譯品質標記
+
+**Request body**：
+```json
+{
+  "quality_flag": true,
+  "quality_note": "遺漏了『等品保確認』的後半段"
+}
+```
+
+**欄位說明**：
+- `quality_flag`（必填，boolean）：是否標記該筆翻譯為有問題
+- `quality_note`（可選，string）：問題描述或改進建議
+
+**回應**：200 OK + 更新後該筆完整記錄。
+
+```json
+{
+  "id": 1,
+  "source_text": "這批先不要出貨，等品保確認。",
+  "rt_translation": "Do not ship this batch yet. Wait for QA.",
+  "refined_translation": "Do not ship this batch. Await QA confirmation.",
+  "quality_flag": true,
+  "quality_note": "遺漏了『等品保確認』的後半段",
+  "created_at": "2026-06-14T10:29:00Z"
+}
+```
+
+---
+
 ## 9. 管理頁面（Phase 2）
 
 ### 9.1 `/glossary.html` — Glossary 管理頁
@@ -632,6 +709,28 @@ Standby（不送音訊）
 **導覽**：
 - `public/index.html` topbar 補兩個連結：`詞彙表`（→ `/glossary.html`）、`精譯指令`（→ `/refine-prompts.html`）。
 - `refine-prompts.html` 含返回主畫面連結（`← 主畫面`）。
+
+**存取控制**：同 glossary.html，由後端 HTTP Basic Auth middleware 統一處理（D-016）。
+
+### 9.3 `/logs.html` — 翻譯紀錄/分析頁
+
+靜態 HTML + vanilla JS，位置 `public/logs.html`（沿用 refine-prompts 頁架構）。
+
+**功能**：
+- 分頁表格：列出翻譯紀錄，欄位包括時間、原文（語言標籤）、RT 翻譯、Refined 翻譯、品質標記狀態
+- 時間排序：依 `created_at DESC` 倒序（最新在上）
+- 篩選：checkbox 「只看標記翻錯」(→ `flagged=1` 重撈)
+- 每列「標記翻錯」按鈕 → 直接 `PATCH /api/logs/:id/quality {quality_flag:true}`（不開模態框；`quality_note` 暫未提供 UI 輸入，僅 API 支援）→ 該列加底色；再按一次「取消標記」(→ `quality_flag=false`)
+- 分頁控制：prev/next 按鈕、顯示「第 X–Y 筆，共 N」
+- **無 DB 離線降級**：API 回 503 時頁面顯示提示「資料庫未連線，翻譯紀錄功能停用」，不顯示錯誤崩潰
+
+**場景說明**：
+- 精譯效果迭代：使用者即時開啟 Route B、進行若干對話後，到 `/logs.html` 查看 RT vs Refined 並排，反饋哪些翻譯有問題。
+- 品質監控：標記有誤的筆數，勾「只看標記」快速定位問題，供後續改進 Glossary / Refine Prompt。
+
+**導覽**：
+- `public/index.html` topbar 加第四個連結：`翻譯紀錄`（→ `/logs.html`），與詞彙表 / 精譯指令 / 語言偵測並列。
+- `logs.html` 含返回主畫面連結（`← 主畫面`）。
 
 **存取控制**：同 glossary.html，由後端 HTTP Basic Auth middleware 統一處理（D-016）。
 

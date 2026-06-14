@@ -4,7 +4,7 @@
 
 ## 📌 目前狀態（每次更新時覆寫此區塊，不要往下追加）
 
-最後更新：2026-06-14（技術債清理：STT_CHUNK_MS 單一常數 + SILENCE_DURATION 幽靈變數移除；移除 D-018 雜訊卡片過濾 + 新增 CJK 門檻設定頁 D-019，文件更新完成；D-011 偵測通用化 4 問題全拍板；Phase 3 ③ 解除 gate）
+最後更新：2026-06-14（翻譯紀錄/分析頁 /logs.html 合併 Log viewer/品質回報/Refined 分析（D-020）；移除多站別/Safety keyword；技術債清理 STT_CHUNK_MS + SILENCE_DURATION；D-011 多語言偵測通用化全拍板；D-019 CJK 門檻設定頁）
 
 **所在階段**：v1 核心已上線並實測通過（Route A/B + Glossary + Basic Auth + STT 參數化）；線上語音實測已過。Phase 3 進行中：D-015 精譯指令頁已實作並**線上實測通過**、D-017 中英夾雜 bug 已修並驗證。Phase 3 已排程的 ①② 皆完成驗收，剩 ③（韓文＋語言對雙選單）尚未啟動。下一個動作見最底「下一步」。
 **怎麼跑**：線上 https://whisper-realtime-leon.zeabur.app （Basic Auth 已開，需帳密）；本機 PowerShell `npm start`（port 3100）→ http://localhost:3100
@@ -55,7 +55,8 @@
   - **線上驗證**：重講「please幫我check一下shipment, 然後update狀態。」→ trace 顯示 `lang=zh` → 翻成 "Please help me check the shipment, then update the status."（不再吐回中文）。診斷用 `[trace]` log 已移除（commit 收尾）。
   - 範圍：僅中↔英；多語言 per-script 偵測留 Phase 4（見 ③、D-011、D-017）。
 - [ ] **③ 韓文 + 語言對雙選單**（PRD §7.10、D-011；無迫切韓文需求前不啟動）；含**偵測通用化（per-script，CJK/諺文/拉丁）** — D-017 的多語言部分併此處理。**D-011 偵測通用化的 4 個開放問題已於 2026-06-14 全部拍板（見 DECISIONS D-011）；③ 解除 gate，待有韓文需求即可從此設計啟動**。實作範圍：語言對雙選單（zh/en/ko）、per-script 偵測、per-pair 門檻（預設在碼 0.5、覆寫才用變數，zh↔en 沿用 LANG_CJK_THRESHOLD=0.15）、語言對 (A,B) 注入翻譯 prompt。日文 + English pivot 跳板列為全專案完成後的獨立議題。`LANG_CJK_THRESHOLD` 只適用中↔英，不可硬擴到其他語言對
-- [ ] （未排程）其他 Phase 3 條目：多站別/產線設定、Safety keyword 標示、Log viewer、翻譯品質回報、Refined translation 效果分析
+- [x] **翻譯紀錄/分析頁 /logs.html**（分頁 + 原文/RT/Refined 並排 + 品質標記）— 本次實作（合併原 Log viewer/翻譯品質回報/Refined translation 效果分析；D-020）
+- ~~（未排程）多站別/產線設定、Safety keyword 標示~~ — **使用者決定先不做，已從 roadmap 移除（2026-06-14）**
 
 **Backlog（待執行，未排定；線上實測後再評估是否做）**：
 
@@ -466,3 +467,21 @@ const wsURL = `${protocol}//${location.host}/ws`;
 - **不開決策 D-0xx**：屬小清理（純文件移除誤導資訊 + 筆記實作決策），非架構/設計決策；理由記在本 handoff 足夠，無需新決策文檔。
 
 **下一步**：無（本次為文件清理，無後續代碼動作或驗證）。
+
+---
+
+## 2026-06-14 — Roadmap grooming（Part 0）：翻譯紀錄/分析頁 /logs.html 定案（合併 ③④⑤，D-020）+ 移除多站別/Safety keyword
+
+**決策**：
+- **範圍收斂**：原計畫 Phase 3 未排程的 5 項（①多站別/產線設定、②Safety keyword 標示、③Log viewer、④翻譯品質回報、⑤Refined 效果分析）經使用者審視後決定：移除 ①②，將 ③④⑤ 收斂成**單一 `/logs.html` 翻譯紀錄 / 分析頁**。
+- **資料已備妥**：`translation_logs` 表已存好全部必要資料（source_text / rt_translation / refined_translation / glossary_used / 等），零額外資料欄，⑤(RT vs Refined 並排) 純 UI 展示。
+- **實作方向**：沿用 glossary/refine-prompts 既有架構（DB helper + `/api/logs` + 管理頁 `/logs.html` + requireDb graceful degrade）；新增 quality_flag / quality_note 欄位支持品質標記；分頁列表（不全撈）、可篩選「只看被標記」。
+
+**Roadmap 變更**：
+- dashboard 頂部「最後更新」刷新日期與內容摘要
+- Phase 3 待辦中新增「[x] 翻譯紀錄/分析頁 /logs.html……（D-020）」
+- 移除「多站別/產線設定」與「Safety keyword 標示」（使用者決定先不做，從 roadmap 移除）
+
+**文件更新完成**（PROGRESS.md + DECISIONS.md + PROTOCOL.md，見 Part 0–4）。
+
+**下一步**：無（Part 0–4 為文件規畫，待 Part 1–3 程式碼實作）。

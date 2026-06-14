@@ -395,4 +395,41 @@ Threshold % ↔ dB 對應：0% = -50dB，100% = 0dB，線性對映（60% ≈ -20
 - 前端 localStorage + WS 傳遞：改用 DB 避免分布式同步問題。
 - 語言對選單（Phase 3 的 ③）：本期先做 zh↔en，選單留到 Phase 3。
 
+## D-020：翻譯紀錄/分析頁（/logs.html）— 合併 Log viewer + 翻譯品質回報 + Refined 分析
+
+**日期**：2026-06-14
+
+**決策**：
+原 Phase 3 未排程的五項（①多站別/產線設定、②Safety keyword 標示、③Log viewer、④翻譯品質回報、⑤Refined 效果分析）根據使用者優先序調整，**移除 ①②；將 ③④⑤ 合併為單一功能 `/logs.html` 翻譯紀錄 / 分析頁**，支援分頁、原文/RT/Refined 並排展示、品質標記（新增 `quality_flag` / `quality_note` 欄位）。
+
+**理由**：
+- `translation_logs` 已存好所需全部資料（`source_text / rt_translation / refined_translation / glossary_used / refinement_enabled / source_lang / target_lang / ts / created_at / audio_mode / threshold_pct`），無需新增資料表，⑤(RT vs Refined 並排) 純 UI 展示問題。
+- ④(品質回報) 只需加 `quality_flag / quality_note` 兩欄與 PATCH 端點
+- ③ 就是頁面本身 + 分頁邏輯
+- 一頁集中觀測、回報、比較，避免三個分散頁面造成重複資料與使用者困惑
+
+**設計細節**：
+- **DB**：`translation_logs` 新增 `quality_flag (BOOLEAN DEFAULT false)` 與 `quality_note (TEXT)`；新增索引 `idx_logs_created_at ON translation_logs(created_at DESC)` 加速分頁查詢。
+- **DB 函式**：
+  - `listLogs({ limit, offset, flaggedOnly })` → 回 `{ rows, total }`；`rows` 依 `id DESC` 排序；`flaggedOnly=true` 時加 `WHERE quality_flag = true`；`total` 為對應條件的總筆數
+  - `setLogQuality(id, flag, note)` → `UPDATE translation_logs SET quality_flag, quality_note WHERE id` → 回更新後該筆記錄
+- **REST**：
+  - `GET /api/logs?limit=&offset=&flagged=(0|1)` → `{ rows, total, limit, offset }`；`limit` clamp(預設 50、上限 100)、`offset` ≥0；`flagged=1` 篩選被標記項；無 DB 回 503
+  - `PATCH /api/logs/:id/quality` body `{ quality_flag:boolean, quality_note?:string }` → 更新該筆、回更新後記錄；無 DB 回 503
+- **前端頁**：`public/logs.html` + `logs.js`（沿用 refine-prompts 架構）
+  - 表格欄：時間(`created_at`) / 原文(`source_text` + `source_lang` 語言標籤) / RT(`rt_translation`) / Refined(`refined_translation`，空則「—」) / 標記
+  - 分頁：prev/next 用 `limit+offset+total`，顯示「第 X–Y 筆，共 N」
+  - 篩選：checkbox 「只看標記翻錯」 → `flagged=1` 重撈
+  - 每列「標記翻錯/取消」按鈕 → `PATCH …/quality` 切換 `quality_flag`（可選填 note）；成功後該列樣式變化（加底色或勾圖案）
+  - API 503 → 離線 banner、停用操作，不崩潰（照 refine-prompts.js / lang-settings.js 模式）
+- **導覽**：`public/index.html` topbar 加第四個連結 `<a href="/logs.html">翻譯紀錄</a>`，與詞彙表 / 精譯指令 / 語言偵測並列
+
+**不做**：
+- Retention（自動清舊）：日後可補，現期 log 量小
+- CSV 匯出、圖表式統計：本期先表格 + 並排 + 標記
+
+**否決方案**：
+- 三個分散頁面（log viewer / 品質回報 / Refined 分析）：增加重複資料與使用者導航負擔，`translation_logs` 一筆已包含所需全部欄位，分散無益。
+- 不加品質標記只做純 log 檢視：品質回報是 Route B 迭代的重要反饋環，必須支持。
+
 ---

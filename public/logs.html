@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>翻譯紀錄 / 分析 — 工廠雙語即時對話</title>
+  <link rel="stylesheet" href="styles.css" />
+  <style>
+    /* ── Page shell ── */
+    .logs-app {
+      display: flex;
+      flex-direction: column;
+      width: 100%;
+      max-width: 1100px;
+      min-height: 100vh;
+      background: var(--surface);
+      border-left:  .5px solid var(--line);
+      border-right: .5px solid var(--line);
+    }
+
+    /* ── Header ── */
+    .gl-header {
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 11px 16px;
+      background: var(--panel);
+      border-bottom: .5px solid var(--line);
+      font-size: 13px;
+    }
+    .gl-brand { font-weight: 700; font-size: 14px; }
+    .gl-sep   { color: var(--hint); }
+    .gl-back {
+      margin-left: auto;
+      color: var(--info-strong);
+      text-decoration: none;
+      font-size: 12.5px;
+      font-weight: 600;
+    }
+    .gl-back:hover { text-decoration: underline; }
+
+    /* ── Main content ── */
+    .gl-content {
+      flex: 1;
+      padding: 20px 16px;
+    }
+
+    /* ── DB error banner ── */
+    .db-error {
+      display: none;
+      background: var(--err-bg);
+      color: var(--err-tx);
+      border: .5px solid #e8c0c0;
+      border-radius: 8px;
+      padding: 12px 16px;
+      margin-bottom: 18px;
+      font-size: 13.5px;
+      font-weight: 500;
+    }
+
+    /* ── Toolbar ── */
+    .logs-toolbar {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      margin-bottom: 14px;
+      flex-wrap: wrap;
+    }
+    .logs-toolbar label {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 13px;
+      cursor: pointer;
+      user-select: none;
+    }
+    .logs-toolbar input[type="checkbox"] {
+      width: 15px;
+      height: 15px;
+      cursor: pointer;
+    }
+
+    /* ── Table ── */
+    .gl-table-wrap { overflow-x: auto; }
+    .gl-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+    .gl-table th {
+      text-align: left;
+      padding: 8px 10px;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--muted);
+      border-bottom: 1px solid var(--line);
+      white-space: nowrap;
+      background: var(--panel);
+    }
+    .gl-table td {
+      padding: 9px 10px;
+      border-bottom: .5px solid var(--line);
+      vertical-align: top;
+    }
+    .gl-table tr:last-child td { border-bottom: none; }
+    .gl-table tr:hover td { background: rgba(0,0,0,.022); }
+    .gl-table tr.row-flagged td { background: rgba(255,80,80,.06); }
+
+    /* Source lang badge */
+    .lang-badge {
+      display: inline-block;
+      font-size: 10.5px;
+      font-weight: 600;
+      padding: 1px 6px;
+      border-radius: 6px;
+      background: var(--panel);
+      color: var(--muted);
+      border: .5px solid var(--line);
+      margin-left: 5px;
+      vertical-align: middle;
+    }
+
+    /* Dash for empty Refined */
+    .empty-dash { color: var(--hint); font-size: 12px; }
+
+    /* Source / RT / Refined text cells */
+    .cell-text {
+      max-width: 240px;
+      word-break: break-word;
+      white-space: pre-wrap;
+    }
+
+    /* Flag button */
+    .btn-flag {
+      font-size: 12px;
+      font-weight: 600;
+      padding: 4px 10px;
+      border-radius: 6px;
+      border: .5px solid var(--line);
+      cursor: pointer;
+      background: var(--surface);
+      color: var(--text);
+      transition: background .12s;
+      white-space: nowrap;
+    }
+    .btn-flag:hover { background: var(--panel); }
+    .btn-flag.flagged {
+      background: rgba(255,80,80,.10);
+      color: var(--err-tx);
+      border-color: #e8c0c0;
+    }
+    .btn-flag:disabled { opacity: .4; cursor: not-allowed; }
+
+    /* Time cell */
+    .cell-time {
+      white-space: nowrap;
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    /* ── Pagination ── */
+    .pagination {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-top: 16px;
+      font-size: 13px;
+    }
+    .pagination .page-info { color: var(--muted); }
+    .btn-page {
+      font-size: 12.5px;
+      font-weight: 600;
+      padding: 5px 14px;
+      border-radius: 6px;
+      border: .5px solid var(--line);
+      cursor: pointer;
+      background: var(--surface);
+      color: var(--text);
+      transition: background .12s;
+    }
+    .btn-page:hover:not(:disabled) { background: var(--panel); }
+    .btn-page:disabled { opacity: .35; cursor: not-allowed; }
+
+    /* ── Loading / empty ── */
+    .loading-row td {
+      text-align: center;
+      color: var(--hint);
+      font-style: italic;
+      padding: 20px;
+    }
+  </style>
+</head>
+<body>
+  <div class="logs-app">
+
+    <!-- Header -->
+    <header class="gl-header">
+      <span class="gl-brand">翻譯紀錄 / 分析</span>
+      <span class="gl-sep">/</span>
+      <span style="color:var(--muted);font-size:12.5px;">Translation Logs</span>
+      <a class="gl-back" href="index.html">← 回主畫面</a>
+    </header>
+
+    <!-- Main content -->
+    <main class="gl-content">
+
+      <!-- DB error banner -->
+      <div class="db-error" id="dbError">
+        資料庫未連線（DATABASE_URL 未設定），翻譯紀錄功能不可用。
+      </div>
+
+      <!-- Toolbar -->
+      <div class="logs-toolbar">
+        <label>
+          <input type="checkbox" id="chkFlagged" onchange="onFlaggedChange()" />
+          只看標記翻錯
+        </label>
+      </div>
+
+      <!-- Logs table -->
+      <div class="gl-table-wrap">
+        <table class="gl-table">
+          <thead>
+            <tr>
+              <th style="width:130px">時間</th>
+              <th style="width:240px">原文 Source</th>
+              <th style="width:220px">RT 即時翻譯</th>
+              <th style="width:220px">Refined 精譯</th>
+              <th style="width:110px">標記</th>
+            </tr>
+          </thead>
+          <tbody id="logsTbody">
+            <tr class="loading-row"><td colspan="5">載入中…</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Pagination -->
+      <div class="pagination">
+        <button class="btn-page" id="btnPrev" onclick="goPrev()" disabled>← 上一頁</button>
+        <span class="page-info" id="pageInfo">—</span>
+        <button class="btn-page" id="btnNext" onclick="goNext()" disabled>下一頁 →</button>
+      </div>
+
+    </main>
+  </div>
+
+  <script src="logs.js"></script>
+</body>
+</html>
