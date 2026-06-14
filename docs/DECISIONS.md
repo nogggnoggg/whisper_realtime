@@ -391,6 +391,8 @@ Threshold % ↔ dB 對應：0% = -50dB，100% = 0dB，線性對映（60% ≈ -20
 
 **Task B 本期跳過**（面板補變數）：查證後發現 server 啟動全域設定、STT 類無法 session 中途動態改，故不做面板補變數；只做獨立設定頁 + DB。
 
+> **2026-06-14 結案 — Task B 整項移除**：詳評後確認唯一有持續價值的子選項（把 `STT_PROMPT` 工廠術語表做成可編輯頁）在現用模型下零效果——`openai-stt.js` 僅在 `STT_MODEL=gpt-4o-transcribe` 才送 prompt，而現用為預設 `gpt-realtime-whisper`（不吃 prompt）。換模型才能生效，但犧牲即時 draft 字幕且精度/延遲/成本未驗證（D-009 僅 A/B 備選），不值得。reasoning_effort/供應商幾乎不手動調，去 Zeabur 改即可。故 Task B 移除；提升行話轉錄準度屬「換模型/後處理」獨立題目。
+
 **否決方案**：
 - 前端 localStorage + WS 傳遞：改用 DB 避免分布式同步問題。
 - 語言對選單（Phase 3 的 ③）：本期先做 zh↔en，選單留到 Phase 3。

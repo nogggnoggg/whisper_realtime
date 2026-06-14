@@ -4,7 +4,7 @@
 
 ## 📌 目前狀態（每次更新時覆寫此區塊，不要往下追加）
 
-最後更新：2026-06-14（對話 feed 文字大小調整(A−/A+,localStorage)；啟動門檻自動校準(④,D-021)；D-011/D-020 已定案）
+最後更新：2026-06-14（Task B 面板補變數評估後移除；對話 feed 字級 A−/A+ 上限 ×2.5；啟動門檻自動校準(④,D-021)；D-019/D-020/D-021 已上線）
 
 **所在階段**：v1 核心已上線並實測通過（Route A/B + Glossary + Basic Auth + STT 參數化）；線上語音實測已過。Phase 3 進行中：D-015 精譯指令頁已實作並**線上實測通過**、D-017 中英夾雜 bug 已修並驗證。Phase 3 已排程的 ①② 皆完成驗收，剩 ③（韓文＋語言對雙選單）尚未啟動。下一個動作見最底「下一步」。
 **怎麼跑**：線上 https://whisper-realtime-leon.zeabur.app （Basic Auth 已開，需帳密）；本機 PowerShell `npm start`（port 3100）→ http://localhost:3100
@@ -66,11 +66,23 @@
 
 - [ ] `STT_MIN_UTTERANCE_MS`（短雜訊卡片過濾）：評估後不做——硬體降噪 + 現有 4 層過濾已足夠；D-018 已撤回。
 - [x] `STT_CHUNK_MS` + `SILENCE_DURATION` 幽靈變數修正（2026-06-14）：STT_CHUNK_MS 採選項 1（程式單一常數，接活 PCM_FLUSH_INTERVAL_MS，預設仍 20ms 行為不變，無 UI/env）；SILENCE_DURATION 幽靈 env 已從 PROTOCOL 移除，靜音由前端滑桿控制
-- [ ] (低成本/面板可見性) 視需要把「已支援但未上 Zeabur」的變數以預設值加進面板：`TRANSLATE_REASONING_EFFORT`(minimal)、`REFINE_REASONING_EFFORT`(minimal；gpt-5.5 不支援會自動移除)；換供應商才需 `ANTHROPIC_API_KEY`/`TRANSLATE_BASE_URL`/`TRANSLATE_API_KEY`；`STT_PROMPT`(僅 gpt-4o-transcribe)。這類**程式碼已支援**，只是沒加面板，跑預設值
+- ~~(低成本/面板可見性) 把「已支援但未上 Zeabur」的變數加進面板（Task B）~~ — **評估後移除（2026-06-14）**：唯一有持續價值的 `STT_PROMPT`（工廠術語表）只在 `gpt-4o-transcribe` 生效，而現用模型是預設 `gpt-realtime-whisper`（不吃 prompt）→ 做了零效果；`TRANSLATE_REASONING_EFFORT`/`REFINE_REASONING_EFFORT`/供應商相關幾乎不手動調，要改去 Zeabur 即可。日後若想提升行話轉錄準度＝「換模型/後處理」獨立題目，與 Task B 無關
 - [ ] (需寫碼/之後評估) 升級存取保護為 session/cookie 登入（方案 C）：真正登入頁 + 登出按鈕 + 閒置逾時失效 + 關瀏覽器清除憑證。動機＝目前 Basic Auth 無真正登出、憑證快取到「瀏覽器關閉」才清（關分頁不清）、server 無法控制有效期或強制清除（見 D-016）。注意：「關分頁瞬間失效」即使 session 也難 100% 保證，能做到的是登出/閒置逾時/關瀏覽器清
 
 **下一步（建議）**：Phase 3 已排程的 ①②（D-015 精譯指令頁、D-017 code-switch 修正）皆已上線驗收，目前**無未驗收項**。剩餘 Phase 3 主項為 **③ 韓文 + 語言對雙選單（D-011）**，但**動工前必須先拍板 D-011 偵測通用化的 4 個開放問題**（(a) 自動猜方向 vs 說話者切換按鈕、(b) 中↔日腳本重疊、(c) 第三語言闖入 code-switch、(d) schema 語言碼對齊）——這些是設計決策，需先與使用者確認再 implement，不可默默選。若無迫切韓文需求，可改挑 backlog 項（見下）或其他未排程 Phase 3 條目（多站別/Safety keyword/Log viewer…）。可調項：`LANG_CJK_THRESHOLD`（中↔英方向微調，Zeabur 改，預設 0.15）。
 **注意事項**：app 的模型/供應商由 Zeabur 環境變數控制：`TRANSLATE_PROVIDER`（openai/anthropic/custom）、`TRANSLATE_MODEL`、`REFINE_MODEL`、`STT_MODEL`；STT 目前僅 OpenAI 實作，OPENAI_API_KEY 必填。真 key 永不經過對話，由使用者在 Zeabur 後台填。`STT_LANGUAGE`：單語為主現場可設（如 `zh`），雙語輪流現場留空（auto-detect）。`BASIC_AUTH_USERS`：未設＝全站開放（程式正常運行但無驗證）；設多組 `user:pass` 後保護靜態頁、`/api/*` 及 WebSocket `/ws`；Basic Auth 無正式登出，需關閉瀏覽器或清除憑證。開發用 workflow 模式且 subagent 要做模型分配（CLAUDE.md Development conventions）。
+
+---
+
+## 2026-06-14 — Task B「面板補變數」評估後移除（roadmap grooming）
+
+**事件**：使用者要求詳細評估 Task B 後決定移除。
+
+**判斷**：唯一有持續價值的子選項是把 `STT_PROMPT`（工廠術語表）做成可編輯頁；但查證 `server/openai-stt.js:64,85` 確認 STT_PROMPT 只在 `STT_MODEL=gpt-4o-transcribe` 送出,使用者跑的是預設 `gpt-realtime-whisper`（不吃 prompt）→ 做了零效果。換模型才能生效,但會犧牲即時逐字 draft 字幕、精度/延遲/成本未驗證（D-009 僅 A/B 備選），不值得。其餘變數（reasoning_effort/供應商）幾乎不手動調,去 Zeabur 改即可。
+
+**結論**：Task B 整項移除（dashboard backlog 已劃線註記）。日後想提升行話轉錄準度＝「換模型/後處理」獨立題目,與 Task B 無關。**純文件,無程式碼變更。**
+
+**剩餘待辦收斂**：③ 韓文（待需求）+ session/cookie 正式登入（🔴大）。
 
 ---
 
