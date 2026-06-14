@@ -365,3 +365,25 @@ Threshold % ↔ dB 對應：0% = -50dB，100% = 0dB，線性對映（60% ≈ -20
 - 調整門檻的「設定頁 UI」：單一數字做 CRUD 頁過重，本期用環境變數；UI 留 backlog（可併 D-004 設定頁或 Phase 4）。
 - 說話者手動切換按鈕（不靠文字猜方向，最穩）：較大 UX 改動，併入 Phase 4 語言對方向設計評估。
 - 多語言通用 per-script 偵測：Phase 4 處理。
+
+## D-018 — 雜訊卡片過濾：前端有效語音時長 gating（即時滑桿，預設關）
+
+**日期**：2026-06-14
+
+**決策**：
+以「有效語音時長」機制過濾極短誤觸發的短雜訊卡片。做成主面板可收合「進階 / 測試」區的即時滑桿（0–500ms，預設 0=關），前端值即時生效並存 localStorage；丟棄段落由後端送 `input_audio_buffer.clear`（不轉錄、不建卡、省成本）。
+
+**理由**：
+使用者麥克風已硬體降噪 + 現有 4 層過濾（硬體 NR / STT_NOISE_REDUCTION / 音量門檻 / 空白過濾），此 gating 屬邊際打磨、必要性與最佳門檻需現場經驗驗證 → 做成即時可調 UI 讓使用者邊講邊 A/B，優於需重啟、無即時回饋的環境變數。
+
+**機制 A：有效語音時長**（與機制 B/C 對比）：
+- Auto 模式：前端量「真正越過音量門檻在講話的累積 ms」，排除尾端靜音。因 Auto 模式每段時長含 ~2s 尾端靜音，純 wall-clock 時長在 Auto 失效；有效語音時長能區分真講「好 / OK」（~300ms）與碰撞聲（<100ms）。
+- Manual 模式：整段按鈕時長（使用者按下到鬆開）。
+- 實作：`_minVoicedMs`（0–500，預設 0）、`_voicedMs` 累積、`_voicedSinceTs` 時戳；`_stopUtterance` 時計算本段 voiced，若 `minVoicedMs > 0 && voiced < minVoicedMs` → `discard = true`（PROTOCOL.md 3.3）。
+
+**否決/取代**：
+- 原 backlog 的 Zeabur 環境變數 `STT_MIN_UTTERANCE_MS`（需重啟、無即時回饋）→ **取代為前端滑桿**（即時生效、可見回饋）。
+- 機制 B（短轉錄字數）：會誤殺合法短指令（例「好」「OK」）。
+- 機制 C（server wall-clock）：Auto 模式含 ~2s 尾端靜音，wall-clock 無法區分真講與空白。
+
+**註記**：CLAUDE.md「主面板只放 3 控制、進階歸 ⚙ 頁」之例外 — 因 A/B 即時調校需講話時可見、且 ⚙ 頁（D-004）尚未建；日後 ⚙ 頁建好可遷入。

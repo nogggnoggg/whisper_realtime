@@ -481,9 +481,16 @@ wss.on('connection', (clientWs) => {
       case 'audio.stop': {
         if (!session.active) return;
         session.active = false;
-        // 提交音訊，觸發 OpenAI 轉錄 → onFinal callback
-        session.stt?.commit();
-        // status 會在 onFinal 完成後更新為 processing → ready
+        // msg.discard 由前端有效語音時長 gating 決定（D-018）
+        if (msg.discard) {
+          // 極短誤觸發：丟棄緩衝、不轉錄、不建卡
+          session.stt?.clear();
+          send({ type: 'status', state: 'ready' });
+        } else {
+          // 提交音訊，觸發 OpenAI 轉錄 → onFinal callback
+          // status 會在 onFinal 完成後更新為 processing → ready
+          session.stt?.commit();
+        }
         break;
       }
 

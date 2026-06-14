@@ -61,7 +61,14 @@ ws://host/ws
 {"type": "audio.stop"}
 ```
 
+或（帶 discard 欄位，可選）：
+
+```json
+{"type": "audio.stop", "discard": true}
+```
+
 - 通知後端本段發言結束，後端將觸發最終轉錄與翻譯流程。
+- `discard`（選擇性欄位，布林值，預設 false）：若為 true，後端不進行轉錄與翻譯，改送 `input_audio_buffer.clear` 丟棄本段音訊；用於前端偵測有效語音時長小於門檻值時的雜訊過濾（詳見 D-018）。
 
 ### 3.4 精準翻譯開關
 

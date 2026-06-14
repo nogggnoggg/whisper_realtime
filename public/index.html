@@ -99,6 +99,17 @@
           <option value="">— 偵測中 —</option>
         </select>
       </div>
+
+      <!-- Advanced / Test controls (collapsible) -->
+      <details id="adv-panel" style="margin-top:10px;">
+        <summary>進階 / 測試 Advanced</summary>
+        <div class="row" style="margin-top:8px;">
+          <label for="min-voiced-slider">最短語音 Min&nbsp;voiced</label>
+          <input type="range" min="0" max="500" step="50" value="0" id="min-voiced-slider">
+          <span class="threshold-val" id="min-voiced-val">關閉 off</span>
+        </div>
+        <p class="hint">過濾極短誤觸發的雜訊卡片;0=關閉。邊調邊測,找出現場最佳值。</p>
+      </details>
     </div>
 
     <!-- ── Safety Notice ── -->
