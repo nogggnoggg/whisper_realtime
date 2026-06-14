@@ -204,14 +204,6 @@ export class OpenAISTTSession {
   }
 
   /**
-   * 丟棄本段已 append 的音訊緩衝（極短誤觸發時呼叫，不轉錄）
-   */
-  clear() {
-    if (!this._isOpen()) return;
-    this._send({ type: 'input_audio_buffer.clear' });
-  }
-
-  /**
    * 關閉連線，釋放資源
    */
   close() {

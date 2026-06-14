@@ -39,6 +39,9 @@ import {
   updateRefinePrompt,
   deleteRefinePrompt,
   getActiveRefinePrompt,
+  getCjkThreshold,
+  listLangThresholds,
+  upsertLangThreshold,
 } from './db.js';
 
 // ── Config ──────────────────────────────────────────────────────────────────
@@ -211,6 +214,46 @@ app.delete('/api/refine-prompts/:id', requireDb, async (req, res) => {
   }
 });
 
+// ── REST API：語言偵測門檻 ────────────────────────────────────────────────────
+
+/**
+ * GET /api/lang-thresholds
+ * 回傳所有語言對的 CJK 門檻列表。
+ */
+app.get('/api/lang-thresholds', requireDb, async (req, res) => {
+  try {
+    const rows = await listLangThresholds();
+    res.json(rows);
+  } catch (err) {
+    console.error('[GET /api/lang-thresholds]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * PUT /api/lang-thresholds
+ * Body: { source_lang, target_lang, threshold }
+ * threshold 自動 clamp 至 [0, 1]。
+ */
+app.put('/api/lang-thresholds', requireDb, async (req, res) => {
+  const { source_lang, target_lang, threshold } = req.body ?? {};
+  if (!source_lang || !target_lang || threshold === undefined) {
+    return res.status(400).json({ error: 'source_lang、target_lang 與 threshold 為必填欄位' });
+  }
+  const clamped = Math.min(1, Math.max(0, Number(threshold)));
+  if (!Number.isFinite(clamped)) {
+    return res.status(400).json({ error: 'threshold 必須為數字' });
+  }
+  try {
+    const row = await upsertLangThreshold(source_lang, target_lang, clamped);
+    if (!row) return res.status(500).json({ error: 'upsert 失敗' });
+    res.json(row);
+  } catch (err) {
+    console.error('[PUT /api/lang-thresholds]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 const httpServer = createServer(app);
 
 // ── WebSocket server ─────────────────────────────────────────────────────────
@@ -310,7 +353,8 @@ wss.on('connection', (clientWs) => {
               return;
             }
 
-            const lang = detectLang(text);
+            const t = await getCjkThreshold('zh', 'en');
+            const lang = detectLang(text, t);
             // 中文原文：轉繁體後再送前端與後續翻譯
             const finalText = lang === 'zh' ? toTraditional(text) : text;
             const ts = new Date()
@@ -481,16 +525,7 @@ wss.on('connection', (clientWs) => {
       case 'audio.stop': {
         if (!session.active) return;
         session.active = false;
-        // msg.discard 由前端有效語音時長 gating 決定（D-018）
-        if (msg.discard) {
-          // 極短誤觸發：丟棄緩衝、不轉錄、不建卡
-          session.stt?.clear();
-          send({ type: 'status', state: 'ready' });
-        } else {
-          // 提交音訊，觸發 OpenAI 轉錄 → onFinal callback
-          // status 會在 onFinal 完成後更新為 processing → ready
-          session.stt?.commit();
-        }
+        session.stt?.commit();
         break;
       }
 

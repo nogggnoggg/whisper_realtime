@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>語言偵測設定 — 工廠雙語即時對話</title>
+  <link rel="stylesheet" href="styles.css" />
+  <style>
+    /* ── Page shell ── */
+    .rp-app {
+      display: flex;
+      flex-direction: column;
+      width: 100%;
+      max-width: 900px;
+      min-height: 100vh;
+      background: var(--surface);
+      border-left:  .5px solid var(--line);
+      border-right: .5px solid var(--line);
+    }
+
+    /* ── Header ── */
+    .gl-header {
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 11px 16px;
+      background: var(--panel);
+      border-bottom: .5px solid var(--line);
+      font-size: 13px;
+    }
+    .gl-brand {
+      font-weight: 700;
+      font-size: 14px;
+    }
+    .gl-sep { color: var(--hint); }
+    .gl-back {
+      margin-left: auto;
+      color: var(--info-strong);
+      text-decoration: none;
+      font-size: 12.5px;
+      font-weight: 600;
+    }
+    .gl-back:hover { text-decoration: underline; }
+
+    /* ── Main content ── */
+    .gl-content {
+      flex: 1;
+      padding: 20px 16px;
+    }
+
+    /* ── DB error banner ── */
+    .db-error {
+      display: none;
+      background: var(--err-bg);
+      color: var(--err-tx);
+      border: .5px solid #e8c0c0;
+      border-radius: 8px;
+      padding: 12px 16px;
+      margin-bottom: 18px;
+      font-size: 13.5px;
+      font-weight: 500;
+    }
+
+    /* ── Section heading ── */
+    .gl-section-title {
+      font-size: 12.5px;
+      font-weight: 600;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: .04em;
+      margin: 0 0 10px;
+    }
+
+    /* ── Settings card ── */
+    .settings-card {
+      background: var(--panel);
+      border: .5px solid var(--line);
+      border-radius: 10px;
+      padding: 20px 20px 24px;
+      margin-bottom: 24px;
+      max-width: 560px;
+    }
+
+    .slider-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 14px;
+    }
+    .slider-row label {
+      font-size: 13px;
+      font-weight: 600;
+      white-space: nowrap;
+      min-width: 100px;
+    }
+    .slider-row input[type="range"] {
+      flex: 1;
+    }
+    .slider-val {
+      font-size: 14px;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+      min-width: 36px;
+      text-align: right;
+      color: var(--info-strong);
+    }
+
+    .btn-save {
+      padding: 7px 20px;
+      background: var(--info-strong);
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background .15s;
+    }
+    .btn-save:hover   { background: #1571bf; }
+    .btn-save:active  { background: #0e5aa0; }
+    .btn-save:disabled {
+      background: #c5c3ba;
+      cursor: not-allowed;
+    }
+
+    .save-feedback {
+      display: inline-block;
+      margin-left: 12px;
+      font-size: 13px;
+      color: var(--ok-tx);
+      opacity: 0;
+      transition: opacity .3s;
+    }
+    .save-feedback.show { opacity: 1; }
+
+    /* ── Hint text ── */
+    .hint-block {
+      background: var(--surface);
+      border: .5px solid var(--line);
+      border-radius: 8px;
+      padding: 12px 14px;
+      font-size: 13px;
+      color: var(--muted);
+      line-height: 1.6;
+      max-width: 560px;
+    }
+    .hint-block strong { color: var(--text); }
+  </style>
+</head>
+<body>
+  <div class="rp-app">
+
+    <!-- Header -->
+    <header class="gl-header">
+      <span class="gl-brand">語言偵測設定</span>
+      <span class="gl-sep">/</span>
+      <span style="color:var(--muted);font-size:12.5px;">Language Detection</span>
+      <a class="gl-back" href="index.html">← 回主畫面</a>
+    </header>
+
+    <!-- Main content -->
+    <main class="gl-content">
+
+      <!-- DB error banner -->
+      <div class="db-error" id="dbError">
+        資料庫未連線（DATABASE_URL 未設定），門檻無法持久化。目前顯示預設值（0.15），修改不會被儲存。
+      </div>
+
+      <!-- Threshold slider -->
+      <p class="gl-section-title">中↔英 CJK 方向偵測門檻</p>
+      <div class="settings-card">
+        <div class="slider-row">
+          <label for="cjk-slider">CJK 門檻</label>
+          <input type="range" min="0" max="100" value="15" id="cjk-slider" />
+          <span class="slider-val" id="cjk-val">0.15</span>
+        </div>
+        <div>
+          <button class="btn-save" id="btnSave" onclick="saveThreshold()">儲存</button>
+          <span class="save-feedback" id="saveFeedback">已儲存</span>
+        </div>
+      </div>
+
+      <!-- Hint -->
+      <div class="hint-block">
+        <strong>說明：</strong>
+        門檻越低越偏中文方——中英夾雜句中，只要有少量 CJK 字元即判為中文，翻成英文。
+        門檻越高則需要更多 CJK 字元才判為中文，混合句可能被判為英文方向。
+        <br /><br />
+        <strong>D-017 預設值：0.15</strong>（即 CJK 字元佔非空白字元 15% 以上即判中文）。
+        <br />
+        僅影響中↔英方向偵測，不影響其他語言對。
+      </div>
+
+    </main>
+  </div>
+
+  <script src="lang-settings.js"></script>
+</body>
+</html>

@@ -13,6 +13,11 @@
  *                          → Promise<void>
  *   createSession()        → Promise<string|null>
  *   endSession(sessionId)  → Promise<void>
+ *   getCjkThreshold(sourceLang, targetLang)
+ *                          → Promise<number|null>   （記憶體快取；無 DB/無列→null）
+ *   listLangThresholds()   → Promise<Array<{source_lang,target_lang,threshold,updated_at}>>
+ *   upsertLangThreshold(sourceLang, targetLang, threshold)
+ *                          → Promise<object|null>   （upsert 後列；清該對快取）
  *
  * DATABASE_URL 未設定 → isDbEnabled()=false，所有函式為安全 no-op。
  * SSL：PGSSLMODE=disable → 不加 SSL；否則先試 ssl:{rejectUnauthorized:false}，
@@ -137,6 +142,16 @@ export async function initDb() {
         enabled     boolean     NOT NULL DEFAULT true,
         created_at  timestamptz          DEFAULT now(),
         updated_at  timestamptz          DEFAULT now()
+      )
+    `);
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS lang_pair_thresholds (
+        source_lang text  NOT NULL,
+        target_lang text  NOT NULL,
+        threshold   real  NOT NULL,
+        updated_at  timestamptz DEFAULT now(),
+        PRIMARY KEY (source_lang, target_lang)
       )
     `);
 
@@ -439,6 +454,88 @@ export async function getActiveRefinePrompt() {
     return rows[0] ?? null;
   } catch (err) {
     console.warn('[db] getActiveRefinePrompt 失敗:', err.message);
+    return null;
+  }
+}
+
+// ── 公開：語言對偵測門檻 ──────────────────────────────────────────────────────
+
+/** 記憶體快取：`"${sourceLang}:${targetLang}"` → threshold(number) */
+const _thresholdCache = new Map();
+
+/**
+ * 取得指定語言對的 CJK 門檻值（來自 DB lang_pair_thresholds 表）。
+ * 使用記憶體快取；無 DB 或無對應列時回 null。
+ *
+ * @param {string} sourceLang
+ * @param {string} targetLang
+ * @returns {Promise<number|null>}
+ */
+export async function getCjkThreshold(sourceLang, targetLang) {
+  if (!_dbEnabled || !pool) return null;
+  const cacheKey = `${sourceLang}:${targetLang}`;
+  if (_thresholdCache.has(cacheKey)) return _thresholdCache.get(cacheKey);
+  try {
+    const { rows } = await pool.query(
+      `SELECT threshold FROM lang_pair_thresholds
+        WHERE source_lang = $1 AND target_lang = $2
+        LIMIT 1`,
+      [sourceLang, targetLang],
+    );
+    if (!rows.length) return null;
+    const val = rows[0].threshold;
+    _thresholdCache.set(cacheKey, val);
+    return val;
+  } catch (err) {
+    console.warn('[db] getCjkThreshold 失敗:', err.message);
+    return null;
+  }
+}
+
+/**
+ * 列出所有語言對門檻設定（DB 停用時回 []）。
+ * @returns {Promise<Array<{source_lang:string, target_lang:string, threshold:number, updated_at:Date}>>}
+ */
+export async function listLangThresholds() {
+  if (!_dbEnabled || !pool) return [];
+  try {
+    const { rows } = await pool.query(
+      `SELECT source_lang, target_lang, threshold, updated_at
+         FROM lang_pair_thresholds
+        ORDER BY source_lang, target_lang`,
+    );
+    return rows;
+  } catch (err) {
+    console.warn('[db] listLangThresholds 失敗:', err.message);
+    return [];
+  }
+}
+
+/**
+ * 新增或更新語言對門檻，回傳 upsert 後的完整列；並清除該對的記憶體快取。
+ * DB 停用時回 null。
+ *
+ * @param {string} sourceLang
+ * @param {string} targetLang
+ * @param {number} threshold
+ * @returns {Promise<object|null>}
+ */
+export async function upsertLangThreshold(sourceLang, targetLang, threshold) {
+  if (!_dbEnabled || !pool) return null;
+  try {
+    const { rows } = await pool.query(
+      `INSERT INTO lang_pair_thresholds (source_lang, target_lang, threshold, updated_at)
+       VALUES ($1, $2, $3, now())
+       ON CONFLICT (source_lang, target_lang)
+       DO UPDATE SET threshold = EXCLUDED.threshold, updated_at = now()
+       RETURNING *`,
+      [sourceLang, targetLang, threshold],
+    );
+    // 清除該對快取，使下次 getCjkThreshold 重新從 DB 讀取
+    _thresholdCache.delete(`${sourceLang}:${targetLang}`);
+    return rows[0] ?? null;
+  } catch (err) {
+    console.warn('[db] upsertLangThreshold 失敗:', err.message);
     return null;
   }
 }

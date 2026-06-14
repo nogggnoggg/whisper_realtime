@@ -13,7 +13,6 @@ import { AudioPipeline } from './audio.js';
 let mode = 'manual';
 let thresholdPct = 60;
 let silenceDurationMs = 2000;
-let minVoicedMs = 0;
 let refinedOn = false;
 
 /** @type {WebSocket|null} */
@@ -55,8 +54,6 @@ const thresholdMark     = /** @type {HTMLElement} */ (document.getElementById('t
 const thresholdSection  = /** @type {HTMLElement} */ (document.getElementById('threshold-section'));
 const silenceSlider     = /** @type {HTMLInputElement} */ (document.getElementById('silence-slider'));
 const silenceValEl      = /** @type {HTMLElement} */ (document.getElementById('silence-val'));
-const minVoicedSlider   = /** @type {HTMLInputElement} */ (document.getElementById('min-voiced-slider'));
-const minVoicedValEl    = /** @type {HTMLElement} */ (document.getElementById('min-voiced-val'));
 const levelBar          = /** @type {HTMLElement} */ (document.getElementById('level-bar'));
 const micSelect         = /** @type {HTMLSelectElement} */ (document.getElementById('mic-select'));
 const topbarModeEl      = /** @type {HTMLElement} */ (document.getElementById('topbar-mode'));
@@ -148,8 +145,6 @@ function initAudioPipeline() {
 
   // Apply persisted silence duration
   ap.setSilenceDuration(silenceDurationMs);
-  // Apply persisted min voiced duration
-  ap.setMinVoicedMs(minVoicedMs);
 
   ap.init(selectedDeviceId || undefined)
     .then(function() {
@@ -603,14 +598,6 @@ silenceSlider.addEventListener('input', function() {
   if (ap) ap.setSilenceDuration(silenceDurationMs);
 });
 
-// ── Min voiced duration slider ───────────────────────────────────────────────
-minVoicedSlider.addEventListener('input', function() {
-  minVoicedMs = Number(minVoicedSlider.value);
-  minVoicedValEl.textContent = minVoicedMs === 0 ? '關閉 off' : minVoicedMs + 'ms';
-  localStorage.setItem('sttMinVoicedMs', String(minVoicedMs));
-  if (ap) ap.setMinVoicedMs(minVoicedMs);
-});
-
 // ── Microphone selector ─────────────────────────────────────────────────────
 micSelect.addEventListener('change', function() {
   selectedDeviceId = micSelect.value;
@@ -701,17 +688,6 @@ function updateTopbar() {
     }
   }
   silenceSlider.value = String(silenceDurationMs);
-
-  // Min voiced duration
-  const storedMinVoiced = localStorage.getItem('sttMinVoicedMs');
-  if (storedMinVoiced !== null) {
-    const parsed = Number(storedMinVoiced);
-    if (!isNaN(parsed) && parsed >= 0 && parsed <= 500) {
-      minVoicedMs = parsed;
-    }
-  }
-  minVoicedSlider.value = String(minVoicedMs);
-  minVoicedValEl.textContent = minVoicedMs === 0 ? '關閉 off' : minVoicedMs + 'ms';
 
   // Threshold %
   const storedThreshold = localStorage.getItem('sttThresholdPct');

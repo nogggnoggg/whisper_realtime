@@ -3,11 +3,13 @@
  *
  * 規則（依 PROTOCOL.md §6.3）：
  *   CJK 統一漢字（U+4E00–U+9FFF）及擴充 A（U+3400–U+4DBF）字元
- *   佔非空白字元總數 > CJK_THRESHOLD → "zh"，否則 → "en"
+ *   佔非空白字元總數 > threshold → "zh"，否則 → "en"
  *   假名（片假名、平假名）不計入 CJK 統計。
  *
- *   CJK_THRESHOLD 預設 0.15（低門檻，讓中英 code-switch 句子仍判中文方）；
- *   可透過環境變數 LANG_CJK_THRESHOLD 覆寫（趨近 0 → 含任何中文字即判中文方）。
+ *   threshold 優先序：
+ *     1. detectLang 呼叫端傳入的 thresholdOverride（DB 查詢值）
+ *     2. 環境變數 LANG_CJK_THRESHOLD
+ *     3. 內建預設 0.15（低門檻，讓中英 code-switch 句子仍判中文方）
  */
 
 import { fileURLToPath } from 'url';
@@ -21,9 +23,10 @@ const CJK_THRESHOLD = Number.isFinite(_t) ? _t : 0.15;
 /**
  * 偵測文字語言方向
  * @param {string} text
+ * @param {number|null} [thresholdOverride=null]  呼叫端傳入（如 DB 值）；null 時用 CJK_THRESHOLD
  * @returns {"zh"|"en"}
  */
-export function detectLang(text) {
+export function detectLang(text, thresholdOverride = null) {
   if (!text || typeof text !== 'string') return 'en';
 
   // 移除空白後的字元
@@ -40,10 +43,11 @@ export function detectLang(text) {
     }
   }
 
+  // threshold 優先序：呼叫端 override → env 常數 CJK_THRESHOLD（env/預設 0.15）
+  const threshold = (thresholdOverride != null) ? thresholdOverride : CJK_THRESHOLD;
+
   // CJK 佔比 > 門檻 → 中文方（翻英）；否則英文方（翻中）。
-  // 門檻預設 0.15（低門檻，讓中文夾英文的句子仍判中文方）；
-  // 設更低趨近 0 = 含任何中文字即中文方。
-  return cjkCount / nonWS.length > CJK_THRESHOLD ? 'zh' : 'en';
+  return cjkCount / nonWS.length > threshold ? 'zh' : 'en';
 }
 
 // ---- 自測：node server/lang.js --------------------------------------------
@@ -75,11 +79,17 @@ if (process.argv[1] === __filename) {
       expected: 'zh',
       desc: 'code-switch（英文框架夾中文，CJK ≈ 20% > 0.15 → zh）',
     },
+    {
+      text: 'please幫我check一下。 the shipment,然後update狀態。',
+      expected: 'en',
+      desc: 'thresholdOverride=0.5 → 同句 CJK 佔比 < 0.5 → 判 en',
+      thresholdOverride: 0.5,
+    },
   ];
 
   let passed = 0;
-  for (const { text, expected, desc } of cases) {
-    const result = detectLang(text);
+  for (const { text, expected, desc, thresholdOverride } of cases) {
+    const result = detectLang(text, thresholdOverride ?? null);
     const ok = result === expected;
     const icon = ok ? '✓' : '✗';
     console.log(`${icon} [${desc}] detectLang → "${result}" (expected "${expected}")`);

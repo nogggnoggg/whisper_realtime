@@ -23,8 +23,7 @@
  * WebSocket messages sent:
  *   {"type":"audio.start","mode":"manual"|"auto"}           — before first binary frame
  *   <ArrayBuffer PCM16LE 24kHz>                             — audio data
- *   {"type":"audio.stop","discard":<boolean>}               — end of utterance;
- *       discard=true when voiced duration < minVoicedMs (server should clear buffer, not commit)
+ *   {"type":"audio.stop"}                                   — end of utterance
  */
 
 'use strict';
@@ -81,12 +80,6 @@ export class AudioPipeline {
     this._mode = 'manual';          // manual | auto
     this._thresholdPct = 60;        // 0–100
     this._silenceDurationMs = SILENCE_DURATION_MS_DEFAULT; // adjustable hold-off
-
-    // Voiced-duration gating (setMinVoicedMs)
-    this._minVoicedMs     = 0;    // 0 = disabled; threshold in ms
-    this._voicedMs        = 0;    // accumulated voiced ms for current utterance
-    this._voicedSinceTs   = null; // timestamp when current voiced segment started (null = not voiced)
-    this._utteranceStartTs = 0;   // wall-clock ms when _startUtterance fired
 
     // AudioContext / Worklet
     this._audioCtx = null;
@@ -208,16 +201,6 @@ export class AudioPipeline {
   }
 
   /**
-   * Set the minimum voiced duration required to commit an utterance.
-   * Segments with less voiced time are discarded (audio.stop sent with discard:true).
-   * Clamped to [0, 500] ms. 0 = feature disabled (default).
-   * @param {number} ms
-   */
-  setMinVoicedMs(ms) {
-    this._minVoicedMs = Math.max(0, Math.min(500, ms));
-  }
-
-  /**
    * 嘗試將 AudioContext 從 suspended 狀態恢復為 running。
    * 需在使用者手勢上下文（click、pointerdown 等）呼叫才保證成功；
    * 其他時機呼叫可能被瀏覽器靜默拒絕，但不會 throw。
@@ -292,10 +275,6 @@ export class AudioPipeline {
       return;
     }
     this._streaming = true;
-    // Reset voiced-duration accumulators for this utterance
-    this._utteranceStartTs = Date.now();
-    this._voicedMs         = 0;
-    this._voicedSinceTs    = null;
     this._wsSend(JSON.stringify({ type: 'audio.start', mode }));
     this._setState('listening');
 
@@ -322,21 +301,7 @@ export class AudioPipeline {
     if (!this._streaming) return;
     this._streaming = false;
 
-    // --- Voiced-duration gating ---
-    // Flush any still-active voiced segment so the tail is counted.
-    if (this._voicedSinceTs !== null) {
-      this._voicedMs += Date.now() - this._voicedSinceTs;
-      this._voicedSinceTs = null;
-    }
-    // Auto mode: use accumulated _voicedMs (excludes silence tail).
-    // Manual mode: _voicedMs is never accumulated (handleLevel returns early);
-    //   use full button-hold duration as proxy for voiced time.
-    const voiced = this._mode === 'auto'
-      ? this._voicedMs
-      : Date.now() - this._utteranceStartTs;
-    const discard = this._minVoicedMs > 0 && voiced < this._minVoicedMs;
-
-    this._wsSend(JSON.stringify({ type: 'audio.stop', discard }));
+    this._wsSend(JSON.stringify({ type: 'audio.stop' }));
     // Record cooldown end time
     this._cooldownUntil = Date.now() + COOLDOWN_MS;
   }
@@ -382,11 +347,7 @@ export class AudioPipeline {
     } else {
       // Listening or Ending: check silence and accumulate voiced duration.
       if (db < thresholdDb) {
-        // Below threshold — close any open voiced segment, start/maintain silence timer.
-        if (this._voicedSinceTs !== null) {
-          this._voicedMs += Date.now() - this._voicedSinceTs;
-          this._voicedSinceTs = null;
-        }
+        // Below threshold — start/maintain silence timer.
         if (this._silenceTimer === null) {
           this._setState('ending');
           this._silenceTimer = setTimeout(() => {
@@ -398,10 +359,7 @@ export class AudioPipeline {
           }, this._silenceDurationMs);
         }
       } else {
-        // Above threshold — open a voiced segment if not already open; cancel silence timer.
-        if (this._voicedSinceTs === null) {
-          this._voicedSinceTs = Date.now();
-        }
+        // Above threshold — cancel silence timer.
         if (this._silenceTimer !== null) {
           this._clearSilenceTimer();
           this._setState('listening');

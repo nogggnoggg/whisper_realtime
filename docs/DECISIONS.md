@@ -366,24 +366,32 @@ Threshold % ↔ dB 對應：0% = -50dB，100% = 0dB，線性對映（60% ≈ -20
 - 說話者手動切換按鈕（不靠文字猜方向，最穩）：較大 UX 改動，併入 Phase 4 語言對方向設計評估。
 - 多語言通用 per-script 偵測：Phase 4 處理。
 
-## D-018 — 雜訊卡片過濾：前端有效語音時長 gating（即時滑桿，預設關）
+## D-018 — (已撤回 2026-06-14) — 雜訊卡片過濾：前端有效語音時長 gating
+
+評估後判定硬體降噪 + 現有 4 層過濾（硬體 NR / STT_NOISE_REDUCTION / 音量門檻 / 空白過濾）已足夠，雜訊卡片過濾非必要，故移除實作。機制設計細節（有效語音時長 gating、前端即時滑桿、audio.stop discard 欄位）見 git commit 93722bf。保留決策歷史以免日後重提。
+
+## D-019：LANG_CJK_THRESHOLD 調整獨立設定頁（DB 持久化 + REST）
 
 **日期**：2026-06-14
 
 **決策**：
-以「有效語音時長」機制過濾極短誤觸發的短雜訊卡片。做成主面板可收合「進階 / 測試」區的即時滑桿（0–500ms，預設 0=關），前端值即時生效並存 localStorage；丟棄段落由後端送 `input_audio_buffer.clear`（不轉錄、不建卡、省成本）。
+`LANG_CJK_THRESHOLD`（中↔英方向偵測門檻，D-017，現 0.15）改為可調 UI——獨立設定頁（類似 glossary/精譯指令管理頁的架構），支援線上即時調整並 DB 持久化。資料層採 `lang_pair_thresholds` 表以 `(source_lang, target_lang)` 為主鍵，部分落實 D-011 的 per-pair 門檻設計；未來 ③（韓文 + 語言對雙選單）到位時自然延伸。
 
 **理由**：
-使用者麥克風已硬體降噪 + 現有 4 層過濾（硬體 NR / STT_NOISE_REDUCTION / 音量門檻 / 空白過濾），此 gating 屬邊際打磨、必要性與最佳門檻需現場經驗驗證 → 做成即時可調 UI 讓使用者邊講邊 A/B，優於需重啟、無即時回饋的環境變數。
+- 中↔英 code-switch 翻譯方向修正（D-017）透過環境變數 `LANG_CJK_THRESHOLD` 調控門檻，但現場使用者需在線上即時調整以驗證最佳值，環境變數需重啟生效不符工作流。
+- DB 持久化 + REST 可讓使用者線上 A/B 測試，且儲存基礎為 per-pair 表（`(source_lang, target_lang) → 門檻`），為 Phase 4 多語言（韓/日）擴充準備；目前唯一實裝對 zh↔en，schema 前置投入成本為零。
 
-**機制 A：有效語音時長**（與機制 B/C 對比）：
-- Auto 模式：前端量「真正越過音量門檻在講話的累積 ms」，排除尾端靜音。因 Auto 模式每段時長含 ~2s 尾端靜音，純 wall-clock 時長在 Auto 失效；有效語音時長能區分真講「好 / OK」（~300ms）與碰撞聲（<100ms）。
-- Manual 模式：整段按鈕時長（使用者按下到鬆開）。
-- 實作：`_minVoicedMs`（0–500，預設 0）、`_voicedMs` 累積、`_voicedSinceTs` 時戳；`_stopUtterance` 時計算本段 voiced，若 `minVoicedMs > 0 && voiced < minVoicedMs` → `discard = true`（PROTOCOL.md 3.3）。
+**設計細節**：
+- **DB 表**：`lang_pair_thresholds(source_lang TEXT, target_lang TEXT, threshold REAL NOT NULL, updated_at TIMESTAMP, PRIMARY KEY(source_lang, target_lang))`
+- **Helper**：`getCjkThreshold(sourceLang, targetLang)` 回該對門檻；無列/無 DB 回 `null`（沿用 graceful degrade）；記憶體快取，PUT 時失效。
+- **偵測串接**：`server/lang.js` `detectLang` 改為 `detectLang(text, thresholdOverride = null)`；`server/index.js` onFinal 時呼叫 `getCjkThreshold('zh','en')` 取 DB 值，無 DB 回退 env/0.15 行為不變。
+- **REST 端點**：`/api/lang-thresholds` GET（列全部語言對）/ PUT（upsert `{source_lang, target_lang, threshold}`，clamp [0,1]），套 `requireDb`；無 DB 503。
+- **前端頁**：新增 `public/lang-settings.html` + `lang-settings.js`，顯示 zh↔en 的 CJK 門檻滑桿（0–100 對應 0.00–1.00），說明「越低越偏中文方（中英夾雜仍判中）；D-017 預設 0.15」；API 503 顯示離線提示不崩潰。`index.html` topbar 導覽加第三個連結「語言偵測」(→ `/lang-settings.html`)，與「詞彙表 / 精譯指令」並列。
 
-**否決/取代**：
-- 原 backlog 的 Zeabur 環境變數 `STT_MIN_UTTERANCE_MS`（需重啟、無即時回饋）→ **取代為前端滑桿**（即時生效、可見回饋）。
-- 機制 B（短轉錄字數）：會誤殺合法短指令（例「好」「OK」）。
-- 機制 C（server wall-clock）：Auto 模式含 ~2s 尾端靜音，wall-clock 無法區分真講與空白。
+**Task B 本期跳過**（面板補變數）：查證後發現 server 啟動全域設定、STT 類無法 session 中途動態改，故不做面板補變數；只做獨立設定頁 + DB。
 
-**註記**：CLAUDE.md「主面板只放 3 控制、進階歸 ⚙ 頁」之例外 — 因 A/B 即時調校需講話時可見、且 ⚙ 頁（D-004）尚未建；日後 ⚙ 頁建好可遷入。
+**否決方案**：
+- 前端 localStorage + WS 傳遞：改用 DB 避免分布式同步問題。
+- 語言對選單（Phase 3 的 ③）：本期先做 zh↔en，選單留到 Phase 3。
+
+---

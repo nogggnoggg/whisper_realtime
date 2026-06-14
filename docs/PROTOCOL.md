@@ -61,14 +61,7 @@ ws://host/ws
 {"type": "audio.stop"}
 ```
 
-或（帶 discard 欄位，可選）：
-
-```json
-{"type": "audio.stop", "discard": true}
-```
-
 - 通知後端本段發言結束，後端將觸發最終轉錄與翻譯流程。
-- `discard`（選擇性欄位，布林值，預設 false）：若為 true，後端不進行轉錄與翻譯，改送 `input_audio_buffer.clear` 丟棄本段音訊；用於前端偵測有效語音時長小於門檻值時的雜訊過濾（詳見 D-018）。
 
 ### 3.4 精準翻譯開關
 
@@ -492,7 +485,51 @@ Standby（不送音訊）
 
 **DELETE /api/glossary/:id** — 刪除術語
 
-### 8.2 `/api/refine-prompts` — 精譯指令管理
+---
+
+### 8.2 `/api/lang-thresholds` — 語言對偵測門檻管理
+
+所有端點均套用 `requireDb` middleware：`DATABASE_URL` 未設或 DB 未連線時一律回傳 `503 Service Unavailable`（`{"error": "db not available"}`）。
+
+---
+
+**GET /api/lang-thresholds**
+
+查詢所有語言對的 CJK 偵測門檻。
+
+**回應**（裸陣列）：
+```json
+[
+  {
+    "source_lang": "zh",
+    "target_lang": "en",
+    "threshold": 0.15
+  }
+]
+```
+
+---
+
+**PUT /api/lang-thresholds**
+
+新增或更新（upsert）語言對門檻。
+
+**Request body**：
+```json
+{
+  "source_lang": "zh",
+  "target_lang": "en",
+  "threshold": 0.20
+}
+```
+
+**門檻範圍**：0–1（超出範圍自動 clamp）。
+
+**回應**：200 OK + 更新後的完整記錄。若 `threshold` 缺漏或無效，回 400 Bad Request。
+
+---
+
+### 8.3 `/api/refine-prompts` — 精譯指令管理
 
 所有端點均套用 `requireDb` middleware：`DATABASE_URL` 未設或 DB 未連線時一律回傳 `503 Service Unavailable`（`{"error": "db not available"}`）。
 

@@ -4,7 +4,7 @@
 
 ## 📌 目前狀態（每次更新時覆寫此區塊，不要往下追加）
 
-最後更新：2026-06-14（D-018 雜訊卡片過濾＝前端有效語音時長即時滑桿，已實作並**線上實測通過**；D-011 偵測通用化 4 問題全拍板；Phase 3 ③ 解除 gate）
+最後更新：2026-06-14（移除 D-018 雜訊卡片過濾 + 新增 CJK 門檻設定頁 D-019，文件更新完成；D-011 偵測通用化 4 問題全拍板；Phase 3 ③ 解除 gate）
 
 **所在階段**：v1 核心已上線並實測通過（Route A/B + Glossary + Basic Auth + STT 參數化）；線上語音實測已過。Phase 3 進行中：D-015 精譯指令頁已實作並**線上實測通過**、D-017 中英夾雜 bug 已修並驗證。Phase 3 已排程的 ①② 皆完成驗收，剩 ③（韓文＋語言對雙選單）尚未啟動。下一個動作見最底「下一步」。
 **怎麼跑**：線上 https://whisper-realtime-leon.zeabur.app （Basic Auth 已開，需帳密）；本機 PowerShell `npm start`（port 3100）→ http://localhost:3100
@@ -59,33 +59,33 @@
 
 **Backlog（待執行，未排定；線上實測後再評估是否做）**：
 
-- [x] ~~(需寫碼) `STT_MIN_UTTERANCE_MS`~~ → **已改以前端即時滑桿實作（D-018，機制=有效語音時長，預設 0=關）；原 env 變數方案作廢；已上線實測通過（2026-06-14，commit 93722bf）**
+- [ ] `STT_MIN_UTTERANCE_MS`（短雜訊卡片過濾）：評估後不做——硬體降噪 + 現有 4 層過濾已足夠；D-018 已撤回。
 - [ ] (需寫碼) `STT_CHUNK_MS` 可調（前端 append 塊大小，現寫死 ~20ms，需改 pcm-worklet.js/audio.js）+ 修 `SILENCE_DURATION` 幽靈變數（PROTOCOL 列過但 server 從不讀；靜音實際由前端設定頁滑桿控制 → 接成真的或從文件移除以免誤會）
 - [ ] (低成本/面板可見性) 視需要把「已支援但未上 Zeabur」的變數以預設值加進面板：`TRANSLATE_REASONING_EFFORT`(minimal)、`REFINE_REASONING_EFFORT`(minimal；gpt-5.5 不支援會自動移除)；換供應商才需 `ANTHROPIC_API_KEY`/`TRANSLATE_BASE_URL`/`TRANSLATE_API_KEY`；`STT_PROMPT`(僅 gpt-4o-transcribe)。這類**程式碼已支援**，只是沒加面板，跑預設值
 - [ ] (需寫碼/之後評估) 升級存取保護為 session/cookie 登入（方案 C）：真正登入頁 + 登出按鈕 + 閒置逾時失效 + 關瀏覽器清除憑證。動機＝目前 Basic Auth 無真正登出、憑證快取到「瀏覽器關閉」才清（關分頁不清）、server 無法控制有效期或強制清除（見 D-016）。注意：「關分頁瞬間失效」即使 session 也難 100% 保證，能做到的是登出/閒置逾時/關瀏覽器清
-- [ ] (低成本/之後評估) `LANG_CJK_THRESHOLD` 調整 UI（設定頁欄位/滑桿）：D-017 本期用環境變數，使用者原想要像 glossary 那樣點進去調的 UI，留待併 D-004 ⚙設定頁或 Phase 4 一起做。**架構已定（2026-06-14，D-011）：情境式單一滑桿（只顯示主畫面當下選的那一對，換語言對滑桿跟著換）；資料層 per-pair 表（(langA,langB)→門檻，預設 0.5）；矩陣式「顯示全部」列為未來進階視圖**
 
 **下一步（建議）**：Phase 3 已排程的 ①②（D-015 精譯指令頁、D-017 code-switch 修正）皆已上線驗收，目前**無未驗收項**。剩餘 Phase 3 主項為 **③ 韓文 + 語言對雙選單（D-011）**，但**動工前必須先拍板 D-011 偵測通用化的 4 個開放問題**（(a) 自動猜方向 vs 說話者切換按鈕、(b) 中↔日腳本重疊、(c) 第三語言闖入 code-switch、(d) schema 語言碼對齊）——這些是設計決策，需先與使用者確認再 implement，不可默默選。若無迫切韓文需求，可改挑 backlog 項（見下）或其他未排程 Phase 3 條目（多站別/Safety keyword/Log viewer…）。可調項：`LANG_CJK_THRESHOLD`（中↔英方向微調，Zeabur 改，預設 0.15）。
 **注意事項**：app 的模型/供應商由 Zeabur 環境變數控制：`TRANSLATE_PROVIDER`（openai/anthropic/custom）、`TRANSLATE_MODEL`、`REFINE_MODEL`、`STT_MODEL`；STT 目前僅 OpenAI 實作，OPENAI_API_KEY 必填。真 key 永不經過對話，由使用者在 Zeabur 後台填。`STT_LANGUAGE`：單語為主現場可設（如 `zh`），雙語輪流現場留空（auto-detect）。`BASIC_AUTH_USERS`：未設＝全站開放（程式正常運行但無驗證）；設多組 `user:pass` 後保護靜態頁、`/api/*` 及 WebSocket `/ws`；Basic Auth 無正式登出，需關閉瀏覽器或清除憑證。開發用 workflow 模式且 subagent 要做模型分配（CLAUDE.md Development conventions）。
 
 ---
 
-## 2026-06-14 — 雜訊卡片過濾（有效語音時長 gating）實作定案（D-018）
+## 2026-06-14 — 移除 D-018 雜訊卡片過濾 + 新增 CJK 門檻設定頁（D-019）
 
-**事件**：於計畫檔 `atomic-roaming-glacier.md` 明確化「雜訊卡片過濾」機制、設計、取代方案後，更新三份文件反映決策。
+**事件**：於計畫檔 `atomic-roaming-glacier.md` 定案：D-018 實作（雜訊卡片過濾前端即時滑桿）已於線上驗收通過，但評估後判定硬體降噪 + 現有 4 層過濾已足夠，D-018 不做（撤回）；改作 Task A — LANG_CJK_THRESHOLD 調整改為獨立設定頁，全套文件更新。
 
-**定案內容**：
-- **機制 A — 有效語音時長**：Auto 模式量「越過音量門檻在講話的累積 ms」（排除尾端 ~2s 靜音），區分真講「好/OK」（~300ms）vs 碰撞聲（<100ms）；Manual 模式用整段按鈕時長。
-- **前端即時滑桿**：主面板可收合「進階 / 測試」區，0–500ms 滑桿（預設 0=關），值即時生效並存 localStorage；優於需重啟的環境變數。
-- **後端 clear 丟棄**：`audio.stop` 訊息加 optional `discard` 欄位；discard=true 時送 `input_audio_buffer.clear`（不轉錄、不建卡、省成本）。
-- **取代方案**：棄置原 backlog 的 Zeabur 環境變數 `STT_MIN_UTTERANCE_MS`；否決機制 B（字數計數，誤殺短指令）與 C（server wall-clock，Auto 失效）。
+**移除 D-018 內容**：
+- PROTOCOL.md：刪除 audio.stop 訊息的 `discard` 欄位說明。
+- DECISIONS.md：D-018 改為「(已撤回 2026-06-14)」短註，濃縮成一段，保留決策歷史避免日後重提。
+- PROGRESS.md：移除 2026-06-14 D-018 handoff 日誌；backlog 的 `STT_MIN_UTTERANCE_MS` 改為「[ ] 評估後不做:硬體降噪 + 現有過濾已足夠,D-018 已撤回」。
 
-**文件更新**：
-- `PROTOCOL.md`：3.3 audio.stop 訊息補 `discard` 欄位說明（含參考 D-018）
-- `DECISIONS.md`：新增 D-018（2026-06-14），詳述決策、理由、機制、否決與註記
-- `PROGRESS.md`：dashboard 「最後更新」改言 D-018；Backlog STT_MIN_UTTERANCE_MS 改勾選並註明「已改以前端滑桿實作」
+**新增 D-019 — CJK 門檻設定頁**：
+- 決策：`LANG_CJK_THRESHOLD`（D-017，現 0.15）做成獨立設定頁，線上即時調整 + DB 持久化 + REST API。資料層採 per-pair 表 `lang_pair_thresholds(source_lang, target_lang, threshold)`，部分落實 D-011 的多語言資料層。
+- 實作方向：DB helper `getCjkThreshold(source, target)`，REST `/api/lang-thresholds` GET/PUT（套 requireDb），前端 `/lang-settings.html` 顯示 zh↔en 滑桿，index.html topbar 加「語言偵測」連結。Task B（面板補變數）本期跳過（server 啟動全域設定、STT 無法 session 中途改，非小改）。
+- PROTOCOL.md：補 `/api/lang-thresholds` GET/PUT 說明、改 `/api/refine-prompts` 為 8.3。
+- DECISIONS.md：新增 D-019，記錄決策、理由、設計細節、Task B 跳過的理由。
+- PROGRESS.md：dashboard backlog「LANG_CJK_THRESHOLD 調整 UI」改為「[✔] 本次實作:獨立設定頁,DB 持久化,D-019」。
 
-**實作 + 驗證(已完成)**：走 Workflow(audio/UI/後端 3×sonnet、文件 haiku、審查 opus,全綠)→ commit 93722bf push → Zeabur 部署 6a2e66e1 RUNNING → **使用者線上實測通過(2026-06-14)**。預設 0=關,回歸安全;門檻值由使用者依現場用即時滑桿 A/B 調校。
+**文件更新完成**（3 檔、共 7 處編輯）。
 
 ---
 
