@@ -33,7 +33,7 @@ let audioState = 'idle';
 /** Feed auto-scroll flag — set false when user scrolls up */
 let autoScroll = true;
 
-/** Feed font-size scale factor. Range 0.9–1.6, step 0.1, default 1.0.
+/** Feed font-size scale factor. Range 0.9–2.5, step 0.1, default 1.0.
  *  At exactly 1.0 the fs-scaled class is removed → zero CSS effect. */
 let feedFontScale = 1.0;
 
@@ -98,7 +98,7 @@ fontDecBtn.addEventListener('click', function() {
 });
 
 fontIncBtn.addEventListener('click', function() {
-  feedFontScale = Math.min(1.6, Math.round((feedFontScale + 0.1) * 10) / 10);
+  feedFontScale = Math.min(2.5, Math.round((feedFontScale + 0.1) * 10) / 10);
   applyFeedScale();
 });
 
@@ -781,11 +781,11 @@ function updateTopbar() {
     refinedOn = storedRefined === 'true';
   }
 
-  // Feed font-scale (range 0.9–1.6; at 1 applyFeedScale() removes class — no effect)
+  // Feed font-scale (range 0.9–2.5; at 1 applyFeedScale() removes class — no effect)
   const storedFeedScale = localStorage.getItem('feedFontScale');
   if (storedFeedScale !== null) {
     const parsed = parseFloat(storedFeedScale);
-    if (!isNaN(parsed) && parsed >= 0.9 && parsed <= 1.6) {
+    if (!isNaN(parsed) && parsed >= 0.9 && parsed <= 2.5) {
       feedFontScale = parsed;
     }
   }
