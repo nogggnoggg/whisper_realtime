@@ -4,7 +4,7 @@
 
 ## 📌 目前狀態（每次更新時覆寫此區塊，不要往下追加）
 
-最後更新：2026-06-14（D-015 精譯指令頁線上實測通過；Phase 3 ①②全綠，下一步＝③韓文/語言對雙選單，動工前先拍板 D-011）
+最後更新：2026-06-14（D-011 多語言偵測通用化 4 個開放問題全部拍板，寫入 DECISIONS；Phase 3 ③ 解除 gate，待韓文需求即可啟動）
 
 **所在階段**：v1 核心已上線並實測通過（Route A/B + Glossary + Basic Auth + STT 參數化）；線上語音實測已過。Phase 3 進行中：D-015 精譯指令頁已實作並**線上實測通過**、D-017 中英夾雜 bug 已修並驗證。Phase 3 已排程的 ①② 皆完成驗收，剩 ③（韓文＋語言對雙選單）尚未啟動。下一個動作見最底「下一步」。
 **怎麼跑**：線上 https://whisper-realtime-leon.zeabur.app （Basic Auth 已開，需帳密）；本機 PowerShell `npm start`（port 3100）→ http://localhost:3100
@@ -54,7 +54,7 @@
   - 修法：B＝`server/lang.js` 門檻改環境變數 `LANG_CJK_THRESHOLD`（預設 0.15）；A＝`translate.js`/`refine.js` prompt 強制整句全譯、夾雜外語一併翻、不照抄。
   - **線上驗證**：重講「please幫我check一下shipment, 然後update狀態。」→ trace 顯示 `lang=zh` → 翻成 "Please help me check the shipment, then update the status."（不再吐回中文）。診斷用 `[trace]` log 已移除（commit 收尾）。
   - 範圍：僅中↔英；多語言 per-script 偵測留 Phase 4（見 ③、D-011、D-017）。
-- [ ] **③ 韓文 + 語言對雙選單**（PRD §7.10、D-011；無迫切韓文需求前不啟動）；含**偵測通用化（per-script，CJK/諺文/拉丁）** — D-017 的多語言部分併此處理。**⚠ implement 前須先拍板 D-011「偵測通用化設計原則」的開放問題**（說話者切換 vs 自動猜方向、腳本重疊中↔日、第三語言闖入 code-switch、LANG_CJK_THRESHOLD 退場）——`LANG_CJK_THRESHOLD` 只適用中↔英，不可硬擴到其他語言對
+- [ ] **③ 韓文 + 語言對雙選單**（PRD §7.10、D-011；無迫切韓文需求前不啟動）；含**偵測通用化（per-script，CJK/諺文/拉丁）** — D-017 的多語言部分併此處理。**D-011 偵測通用化的 4 個開放問題已於 2026-06-14 全部拍板（見 DECISIONS D-011）；③ 解除 gate，待有韓文需求即可從此設計啟動**。實作範圍：語言對雙選單（zh/en/ko）、per-script 偵測、per-pair 門檻（預設在碼 0.5、覆寫才用變數，zh↔en 沿用 LANG_CJK_THRESHOLD=0.15）、語言對 (A,B) 注入翻譯 prompt。日文 + English pivot 跳板列為全專案完成後的獨立議題。`LANG_CJK_THRESHOLD` 只適用中↔英，不可硬擴到其他語言對
 - [ ] （未排程）其他 Phase 3 條目：多站別/產線設定、Safety keyword 標示、Log viewer、翻譯品質回報、Refined translation 效果分析
 
 **Backlog（待執行，未排定；線上實測後再評估是否做）**：
@@ -63,10 +63,28 @@
 - [ ] (需寫碼) `STT_CHUNK_MS` 可調（前端 append 塊大小，現寫死 ~20ms，需改 pcm-worklet.js/audio.js）+ 修 `SILENCE_DURATION` 幽靈變數（PROTOCOL 列過但 server 從不讀；靜音實際由前端設定頁滑桿控制 → 接成真的或從文件移除以免誤會）
 - [ ] (低成本/面板可見性) 視需要把「已支援但未上 Zeabur」的變數以預設值加進面板：`TRANSLATE_REASONING_EFFORT`(minimal)、`REFINE_REASONING_EFFORT`(minimal；gpt-5.5 不支援會自動移除)；換供應商才需 `ANTHROPIC_API_KEY`/`TRANSLATE_BASE_URL`/`TRANSLATE_API_KEY`；`STT_PROMPT`(僅 gpt-4o-transcribe)。這類**程式碼已支援**，只是沒加面板，跑預設值
 - [ ] (需寫碼/之後評估) 升級存取保護為 session/cookie 登入（方案 C）：真正登入頁 + 登出按鈕 + 閒置逾時失效 + 關瀏覽器清除憑證。動機＝目前 Basic Auth 無真正登出、憑證快取到「瀏覽器關閉」才清（關分頁不清）、server 無法控制有效期或強制清除（見 D-016）。注意：「關分頁瞬間失效」即使 session 也難 100% 保證，能做到的是登出/閒置逾時/關瀏覽器清
-- [ ] (低成本/之後評估) `LANG_CJK_THRESHOLD` 調整 UI（設定頁欄位/滑桿）：D-017 本期用環境變數，使用者原想要像 glossary 那樣點進去調的 UI，留待併 D-004 ⚙設定頁或 Phase 4 一起做
+- [ ] (低成本/之後評估) `LANG_CJK_THRESHOLD` 調整 UI（設定頁欄位/滑桿）：D-017 本期用環境變數，使用者原想要像 glossary 那樣點進去調的 UI，留待併 D-004 ⚙設定頁或 Phase 4 一起做。**架構已定（2026-06-14，D-011）：情境式單一滑桿（只顯示主畫面當下選的那一對，換語言對滑桿跟著換）；資料層 per-pair 表（(langA,langB)→門檻，預設 0.5）；矩陣式「顯示全部」列為未來進階視圖**
 
 **下一步（建議）**：Phase 3 已排程的 ①②（D-015 精譯指令頁、D-017 code-switch 修正）皆已上線驗收，目前**無未驗收項**。剩餘 Phase 3 主項為 **③ 韓文 + 語言對雙選單（D-011）**，但**動工前必須先拍板 D-011 偵測通用化的 4 個開放問題**（(a) 自動猜方向 vs 說話者切換按鈕、(b) 中↔日腳本重疊、(c) 第三語言闖入 code-switch、(d) schema 語言碼對齊）——這些是設計決策，需先與使用者確認再 implement，不可默默選。若無迫切韓文需求，可改挑 backlog 項（見下）或其他未排程 Phase 3 條目（多站別/Safety keyword/Log viewer…）。可調項：`LANG_CJK_THRESHOLD`（中↔英方向微調，Zeabur 改，預設 0.15）。
 **注意事項**：app 的模型/供應商由 Zeabur 環境變數控制：`TRANSLATE_PROVIDER`（openai/anthropic/custom）、`TRANSLATE_MODEL`、`REFINE_MODEL`、`STT_MODEL`；STT 目前僅 OpenAI 實作，OPENAI_API_KEY 必填。真 key 永不經過對話，由使用者在 Zeabur 後台填。`STT_LANGUAGE`：單語為主現場可設（如 `zh`），雙語輪流現場留空（auto-detect）。`BASIC_AUTH_USERS`：未設＝全站開放（程式正常運行但無驗證）；設多組 `user:pass` 後保護靜態頁、`/api/*` 及 WebSocket `/ws`；Basic Auth 無正式登出，需關閉瀏覽器或清除憑證。開發用 workflow 模式且 subagent 要做模型分配（CLAUDE.md Development conventions）。
+
+---
+
+## 2026-06-14 — D-011 多語言偵測通用化開放問題全部拍板（只寫文件）
+
+**事件**：與使用者逐項討論 B/C/D，把 D-011「偵測通用化設計原則」的 4 個開放問題 (a)(b)(c)(d) 拍板，寫入 DECISIONS.md。本次不寫程式碼、不碰 Zeabur 變數。
+
+**定案重點**：
+- (a) 維持現狀：per-script 自動偵測方向為主，不強制說話者按鈕（手動覆寫列日後選配）。
+- (b) 選單只放 zh/en/ko；中↔日（同腳本自動偵測分不出）+ English pivot 跳板列為全專案完成後的獨立議題（真正偵測解法是假名輔助）。
+- (c) 方向只比所選兩語言腳本，第三語言不計入方向但全譯入目標；語言對 (A,B) 注入翻譯 prompt 約束方向候選 + 輸出語言。
+- (d) 偵測輸出標準碼 zh/en/ko，對齊 D-012 的 (source_lang, target_lang)。
+- 門檻一般化：全域 LANG_CJK_THRESHOLD → per-pair 偏置（方向內含於量哪個腳本）；預設在碼（DEFAULT_THRESHOLD=0.5）、覆寫才用變數；zh↔en 沿用 0.15、ko 兩對吃預設不新增變數。
+- 設定頁 UI（backlog）：情境式單一滑桿。
+
+**執行方式**：走 Workflow（DECISIONS 寫手 sonnet、PROGRESS 寫手 haiku、審查 opus）。DECISIONS.md 由 sonnet 一次到位；PROGRESS.md 因 haiku 誤判成 plan 模式未真改檔，審查 opus 抓到後由主迴圈補齊四處編輯。
+
+**下一步**：③ 韓文 + 語言對雙選單已解除 gate，待有韓文需求即可從此設計啟動實作（走 Workflow）。
 
 ---
 
