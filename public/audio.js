@@ -43,6 +43,10 @@ const PCM_FLUSH_INTERVAL_MS = 20;   // PCM flush 間隔(ms) — 單一來源，�
 const PREROLL_TARGET_MS = 400;      // desired amount of audio to prepend
 const PREROLL_MAX_MS   = 500;       // ring-buffer ceiling (older chunks dropped)
 
+// Calibration
+const CALIBRATION_MS        = 4000; // listen duration (ms) for noise floor measurement
+const CALIBRATION_MARGIN_DB = 8;    // dB margin added above noise floor
+
 // dB ↔ % conversion (linear mapping: dB = -50 + pct * 0.5)
 function pctToDb(pct) {
   return -50 + pct * 0.5;
@@ -100,6 +104,10 @@ export class AudioPipeline {
     // Flushed to WS at the start of each auto-mode utterance.
     this._prerollBuffer = [];   // Array<Int16Array>
     this._prerollMs     = 0;    // cumulative duration of stored chunks (ms)
+
+    // Calibration state
+    this._calibrating  = false; // true while calibrate() is sampling
+    this._calibSamples = [];    // Array<number> dB values collected during calibration
   }
 
   // -------------------------------------------------------------------------
@@ -238,6 +246,43 @@ export class AudioPipeline {
   }
 
   /**
+   * Calibrate the activation threshold by sampling ambient noise.
+   * Listens for durationMs, takes the 90th-percentile noise floor,
+   * adds marginDb, clamps to [-50, 0] dB, converts to %, and calls
+   * setThreshold(pct).  Resolves with the resulting pct value.
+   *
+   * @param {object}  [opts]
+   * @param {number}  [opts.durationMs=CALIBRATION_MS]        — sampling window (ms)
+   * @param {number}  [opts.marginDb=CALIBRATION_MARGIN_DB]   — dB added above noise floor
+   * @returns {Promise<number>} — threshold pct (0–100)
+   */
+  calibrate({ durationMs = CALIBRATION_MS, marginDb = CALIBRATION_MARGIN_DB } = {}) {
+    return new Promise((resolve) => {
+      this._calibrating  = true;
+      this._calibSamples = [];
+
+      setTimeout(() => {
+        this._calibrating = false;
+
+        let noiseFloorDb;
+        const n = this._calibSamples.length;
+        if (n === 0) {
+          noiseFloorDb = -50;
+        } else {
+          const sorted = this._calibSamples.slice().sort((a, b) => a - b);
+          const idx = Math.floor(0.9 * (n - 1));
+          noiseFloorDb = sorted[idx];
+        }
+
+        const thresholdDb = Math.max(-50, Math.min(0, noiseFloorDb + marginDb));
+        const pct = dbToPct(thresholdDb);
+        this.setThreshold(pct);
+        resolve(pct);
+      }, durationMs);
+    });
+  }
+
+  /**
    * List available audio input devices.
    * @returns {Promise<MediaDeviceInfo[]>}
    */
@@ -329,10 +374,20 @@ export class AudioPipeline {
     // Convert RMS to dBFS
     const db = rmsToDb(rms);
 
+    // Collect calibration samples when calibrate() is active
+    if (this._calibrating) {
+      const sample = (db === -Infinity || db < -50) ? -50 : db;
+      this._calibSamples.push(sample);
+    }
+
     // Clamp dB to [-50, 0] then convert to 0–100 %
     const clampedDb = Math.max(-50, Math.min(0, db));
     const levelPct = dbToPct(clampedDb);
     this._onLevel(levelPct);
+
+    // During calibration: keep the meter live but do not run the auto
+    // activation state machine (avoid a noise blip triggering an utterance).
+    if (this._calibrating) return;
 
     if (this._mode !== 'auto') return;
     if (this._state === 'idle') return;

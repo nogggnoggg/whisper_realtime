@@ -4,7 +4,7 @@
 
 ## 📌 目前狀態（每次更新時覆寫此區塊，不要往下追加）
 
-最後更新：2026-06-14（翻譯紀錄/分析頁 /logs.html 合併 Log viewer/品質回報/Refined 分析（D-020）；移除多站別/Safety keyword；技術債清理 STT_CHUNK_MS + SILENCE_DURATION；D-011 多語言偵測通用化全拍板；D-019 CJK 門檻設定頁）
+最後更新：2026-06-14（啟動門檻自動校準(PRD §13 音訊項 ④,D-021)+ 捨棄 ①②③；翻譯紀錄/分析頁 /logs.html（D-020）；D-011/D-019 已定案）
 
 **所在階段**：v1 核心已上線並實測通過（Route A/B + Glossary + Basic Auth + STT 參數化）；線上語音實測已過。Phase 3 進行中：D-015 精譯指令頁已實作並**線上實測通過**、D-017 中英夾雜 bug 已修並驗證。Phase 3 已排程的 ①② 皆完成驗收，剩 ③（韓文＋語言對雙選單）尚未啟動。下一個動作見最底「下一步」。
 **怎麼跑**：線上 https://whisper-realtime-leon.zeabur.app （Basic Auth 已開，需帳密）；本機 PowerShell `npm start`（port 3100）→ http://localhost:3100
@@ -54,6 +54,9 @@
   - 修法：B＝`server/lang.js` 門檻改環境變數 `LANG_CJK_THRESHOLD`（預設 0.15）；A＝`translate.js`/`refine.js` prompt 強制整句全譯、夾雜外語一併翻、不照抄。
   - **線上驗證**：重講「please幫我check一下shipment, 然後update狀態。」→ trace 顯示 `lang=zh` → 翻成 "Please help me check the shipment, then update the status."（不再吐回中文）。診斷用 `[trace]` log 已移除（commit 收尾）。
   - 範圍：僅中↔英；多語言 per-script 偵測留 Phase 4（見 ③、D-011、D-017）。
+- [x] **④ 啟動門檻自動校準(PRD §13 音訊項 ④,D-021)— 本次實作**
+  - 功能：純前端「校準」鈕,聽 ~4s 量底噪 + 邊際 +8dB → 設門檻;事後可手動微調;只適應穩態底噪
+  - **①區域門檻預設 / ②底噪設定檔 / ③per 裝置設定檔 = 不做（見 D-021）**
 - [ ] **③ 韓文 + 語言對雙選單**（PRD §7.10、D-011；無迫切韓文需求前不啟動）；含**偵測通用化（per-script，CJK/諺文/拉丁）** — D-017 的多語言部分併此處理。**D-011 偵測通用化的 4 個開放問題已於 2026-06-14 全部拍板（見 DECISIONS D-011）；③ 解除 gate，待有韓文需求即可從此設計啟動**。實作範圍：語言對雙選單（zh/en/ko）、per-script 偵測、per-pair 門檻（預設在碼 0.5、覆寫才用變數，zh↔en 沿用 LANG_CJK_THRESHOLD=0.15）、語言對 (A,B) 注入翻譯 prompt。日文 + English pivot 跳板列為全專案完成後的獨立議題。`LANG_CJK_THRESHOLD` 只適用中↔英，不可硬擴到其他語言對
 - [x] **翻譯紀錄/分析頁 /logs.html**（分頁 + 原文/RT/Refined 並排 + 品質標記）— 本次實作（合併原 Log viewer/翻譯品質回報/Refined translation 效果分析；D-020）
 - ~~（未排程）多站別/產線設定、Safety keyword 標示~~ — **使用者決定先不做，已從 roadmap 移除（2026-06-14）**
@@ -467,6 +470,26 @@ const wsURL = `${protocol}//${location.host}/ws`;
 - **不開決策 D-0xx**：屬小清理（純文件移除誤導資訊 + 筆記實作決策），非架構/設計決策；理由記在本 handoff 足夠，無需新決策文檔。
 
 **下一步**：無（本次為文件清理，無後續代碼動作或驗證）。
+
+---
+
+## 2026-06-14 — 啟動門檻自動校準(④,D-021)+ 捨棄 ①②③ Roadmap 定案
+
+**決策定案**：PRD §13 音訊項 ④ 自動校準納入 Phase 3 roadmap；決定捨棄 ①②③。
+
+**關鍵重點**：
+- **④ 自動校準 — 本次實作（純前端）**：主畫面「校準」鈕 → 聽環境底噪 ~4s → 自動取高百分位 + 邊際(+8dB) → 換算設 Threshold % → **事後仍可手動拖曳滑桿微調**；只適應穩態底噪（擋不了突發噪音）
+- **①②③ 捨棄理由**：
+  - ① 區域門檻預設：主畫面手動 threshold 滑桿已覆蓋此用途，區域預設增加複雜度無實質收益
+  - ② 獨立底噪設定檔：被 ④ 自動校準吸收（本就在量背景噪音），獨立設定檔重複且需 DB
+  - ③ per 裝置設定檔：單裝置（iPad/laptop）場景 CP 值低，多裝置同步需 DB + 管理頁且當前無需求
+- **否決**：後端/DB 任何變更、突發噪音抑制（超出音訊門檻邏輯）
+
+**實作方向**：`public/audio.js` + `public/app.js` + `public/index.html`（按計畫檔 atomic-roaming-glacier.md Part 1 實作）。走 **Workflow**：前端 audio/UI(sonnet)、文件(haiku)、審查(opus)；啟動前出示 agent×model 表。
+
+**文件更新完成**：D-021 新增於 DECISIONS.md；dashboard 與待辦同步；本 handoff 追加。
+
+**下一步**：Workflow 實作 ④ 純前端校準功能；完成後 commit + push。
 
 ---
 

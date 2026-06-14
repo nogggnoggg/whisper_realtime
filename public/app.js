@@ -52,6 +52,7 @@ const thresholdSlider   = /** @type {HTMLInputElement} */ (document.getElementBy
 const thresholdValEl    = /** @type {HTMLElement} */ (document.getElementById('threshold-val'));
 const thresholdMark     = /** @type {HTMLElement} */ (document.getElementById('threshold-mark'));
 const thresholdSection  = /** @type {HTMLElement} */ (document.getElementById('threshold-section'));
+const calibrateBtn      = /** @type {HTMLButtonElement} */ (document.getElementById('calibrate-btn'));
 const silenceSlider     = /** @type {HTMLInputElement} */ (document.getElementById('silence-slider'));
 const silenceValEl      = /** @type {HTMLElement} */ (document.getElementById('silence-val'));
 const levelBar          = /** @type {HTMLElement} */ (document.getElementById('level-bar'));
@@ -588,6 +589,39 @@ thresholdSlider.addEventListener('input', function() {
   localStorage.setItem('sttThresholdPct', String(thresholdPct));
   if (ap) ap.setThreshold(thresholdPct);
   updateTopbar();
+});
+
+// ── Calibrate button ────────────────────────────────────────────────────────
+calibrateBtn.addEventListener('click', async function() {
+  if (mode !== 'auto') return;            // only meaningful in Auto mode
+  if (!ap) return;
+
+  // Disable button and show status while sampling
+  calibrateBtn.textContent = '校準中…';
+  calibrateBtn.disabled = true;
+  const prevHint = speakHint.textContent;
+  speakHint.hidden = false;
+  speakHint.textContent = '校準中,請保持安靜… Calibrating, please stay quiet…';
+
+  try {
+    const pct = await ap.calibrate();
+
+    // Apply result through the existing threshold path
+    thresholdPct = Math.round(pct);
+    thresholdSlider.value = String(thresholdPct);
+    thresholdValEl.textContent = thresholdPct + '%';
+    thresholdValEl.style.fontWeight = '600';
+    thresholdMark.style.left = thresholdPct + '%';
+    localStorage.setItem('sttThresholdPct', String(thresholdPct));
+    // ap.setThreshold() was already called inside calibrate(); no need to repeat.
+    updateTopbar();
+  } finally {
+    calibrateBtn.textContent = '校準 Calibrate';
+    calibrateBtn.disabled = false;
+    // Restore hint state
+    speakHint.hidden = (mode === 'auto');
+    if (mode !== 'auto') speakHint.textContent = prevHint;
+  }
 });
 
 // ── Silence duration slider ──────────────────────────────────────────────────
