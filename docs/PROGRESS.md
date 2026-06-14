@@ -4,7 +4,7 @@
 
 ## 📌 目前狀態（每次更新時覆寫此區塊，不要往下追加）
 
-最後更新：2026-06-14（D-018 雜訊卡片過濾機制定案，取代 STT_MIN_UTTERANCE_MS env 方案，做成前端即時滑桿；D-011 偵測通用化 4 問題全拍板；Phase 3 ③ 解除 gate）
+最後更新：2026-06-14（D-018 雜訊卡片過濾＝前端有效語音時長即時滑桿，已實作並**線上實測通過**；D-011 偵測通用化 4 問題全拍板；Phase 3 ③ 解除 gate）
 
 **所在階段**：v1 核心已上線並實測通過（Route A/B + Glossary + Basic Auth + STT 參數化）；線上語音實測已過。Phase 3 進行中：D-015 精譯指令頁已實作並**線上實測通過**、D-017 中英夾雜 bug 已修並驗證。Phase 3 已排程的 ①② 皆完成驗收，剩 ③（韓文＋語言對雙選單）尚未啟動。下一個動作見最底「下一步」。
 **怎麼跑**：線上 https://whisper-realtime-leon.zeabur.app （Basic Auth 已開，需帳密）；本機 PowerShell `npm start`（port 3100）→ http://localhost:3100
@@ -59,7 +59,7 @@
 
 **Backlog（待執行，未排定；線上實測後再評估是否做）**：
 
-- [x] ~~(需寫碼) `STT_MIN_UTTERANCE_MS`~~ → **已改以前端即時滑桿實作（D-018，機制=有效語音時長，預設 0=關）；原 env 變數方案作廢**
+- [x] ~~(需寫碼) `STT_MIN_UTTERANCE_MS`~~ → **已改以前端即時滑桿實作（D-018，機制=有效語音時長，預設 0=關）；原 env 變數方案作廢；已上線實測通過（2026-06-14，commit 93722bf）**
 - [ ] (需寫碼) `STT_CHUNK_MS` 可調（前端 append 塊大小，現寫死 ~20ms，需改 pcm-worklet.js/audio.js）+ 修 `SILENCE_DURATION` 幽靈變數（PROTOCOL 列過但 server 從不讀；靜音實際由前端設定頁滑桿控制 → 接成真的或從文件移除以免誤會）
 - [ ] (低成本/面板可見性) 視需要把「已支援但未上 Zeabur」的變數以預設值加進面板：`TRANSLATE_REASONING_EFFORT`(minimal)、`REFINE_REASONING_EFFORT`(minimal；gpt-5.5 不支援會自動移除)；換供應商才需 `ANTHROPIC_API_KEY`/`TRANSLATE_BASE_URL`/`TRANSLATE_API_KEY`；`STT_PROMPT`(僅 gpt-4o-transcribe)。這類**程式碼已支援**，只是沒加面板，跑預設值
 - [ ] (需寫碼/之後評估) 升級存取保護為 session/cookie 登入（方案 C）：真正登入頁 + 登出按鈕 + 閒置逾時失效 + 關瀏覽器清除憑證。動機＝目前 Basic Auth 無真正登出、憑證快取到「瀏覽器關閉」才清（關分頁不清）、server 無法控制有效期或強制清除（見 D-016）。注意：「關分頁瞬間失效」即使 session 也難 100% 保證，能做到的是登出/閒置逾時/關瀏覽器清
@@ -85,7 +85,7 @@
 - `DECISIONS.md`：新增 D-018（2026-06-14），詳述決策、理由、機制、否決與註記
 - `PROGRESS.md`：dashboard 「最後更新」改言 D-018；Backlog STT_MIN_UTTERANCE_MS 改勾選並註明「已改以前端滑桿實作」
 
-**下一步**：實作（走 Workflow）→ 部署 → 真機 A/B 驗證門檻值調校。
+**實作 + 驗證(已完成)**：走 Workflow(audio/UI/後端 3×sonnet、文件 haiku、審查 opus,全綠)→ commit 93722bf push → Zeabur 部署 6a2e66e1 RUNNING → **使用者線上實測通過(2026-06-14)**。預設 0=關,回歸安全;門檻值由使用者依現場用即時滑桿 A/B 調校。
 
 ---
 
