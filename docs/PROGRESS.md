@@ -4,9 +4,9 @@
 
 ## 📌 目前狀態（每次更新時覆寫此區塊，不要往下追加）
 
-最後更新：2026-06-13（dashboard 補「每日啟動 SOP」、修正過時的所在階段、收斂下一步＝驗 D-015）
+最後更新：2026-06-14（D-015 精譯指令頁線上實測通過；Phase 3 ①②全綠，下一步＝③韓文/語言對雙選單，動工前先拍板 D-011）
 
-**所在階段**：v1 核心已上線並實測通過（Route A/B + Glossary + Basic Auth + STT 參數化）；線上語音實測已過。Phase 3 進行中：D-015 精譯指令頁已實作（待線上 CRUD 實測）、D-017 中英夾雜 bug 已修並驗證。下一個動作見最底「下一步」。
+**所在階段**：v1 核心已上線並實測通過（Route A/B + Glossary + Basic Auth + STT 參數化）；線上語音實測已過。Phase 3 進行中：D-015 精譯指令頁已實作並**線上實測通過**、D-017 中英夾雜 bug 已修並驗證。Phase 3 已排程的 ①② 皆完成驗收，剩 ③（韓文＋語言對雙選單）尚未啟動。下一個動作見最底「下一步」。
 **怎麼跑**：線上 https://whisper-realtime-leon.zeabur.app （Basic Auth 已開，需帳密）；本機 PowerShell `npm start`（port 3100）→ http://localhost:3100
 
 **🔁 每日啟動 SOP（使用者說「請 check roadmap」時，照此跑）**：
@@ -45,7 +45,7 @@
 - [x] 基本登入＝app 內 HTTP Basic Auth（D-016，已上線驗證生效，見上）
 
 *待辦（依優先序）：*
-- [x] **① 自訂 Refine Prompt 管理頁（精譯指令）+ 導覽修復（D-015）— 實作完成（待部署 CRUD 驗證）**
+- [x] **① 自訂 Refine Prompt 管理頁（精譯指令）+ 導覽修復（D-015）— 已上線實測通過（2026-06-14）**
   - 功能：類似 Glossary 的頁面，讓使用者對 Route B refine model 下自訂指令（先讀完整句→依意圖重寫→去口語化等）
   - 決策：**加在硬規則之上**（保留繁體/glossary/只回譯文/保留數字單位，最末重申不可覆蓋）｜**多組具名 prompt 選一個 active**（direction-agnostic）｜**topbar 加兩個連結**（詞彙表、精譯指令）
   - 完成項目：DB 表 `refine_prompts` + `/api/refine-prompts` GET/POST/PUT/DELETE（套 requireDb）+ `refine-prompts.html/js` + refine.js `buildSystemPrompt` 注入（additive，硬規則最末重申）+ index.html topbar 導覽兩連結 + 無 DB graceful degrade（503 + 頁面提示 + Route B 回退寫死預設）
@@ -65,9 +65,22 @@
 - [ ] (需寫碼/之後評估) 升級存取保護為 session/cookie 登入（方案 C）：真正登入頁 + 登出按鈕 + 閒置逾時失效 + 關瀏覽器清除憑證。動機＝目前 Basic Auth 無真正登出、憑證快取到「瀏覽器關閉」才清（關分頁不清）、server 無法控制有效期或強制清除（見 D-016）。注意：「關分頁瞬間失效」即使 session 也難 100% 保證，能做到的是登出/閒置逾時/關瀏覽器清
 - [ ] (低成本/之後評估) `LANG_CJK_THRESHOLD` 調整 UI（設定頁欄位/滑桿）：D-017 本期用環境變數，使用者原想要像 glossary 那樣點進去調的 UI，留待併 D-004 ⚙設定頁或 Phase 4 一起做
 
-**下一步（建議，唯一未驗收項）**：**線上實測 D-015 精譯指令頁**——開 /refine-prompts.html（topbar「精譯指令」連結）→ 新增一組指令 → 設為 active → 回主畫面開精準翻譯、講一句 → 看第三行 [Refined] 有沒有照指令風格；順便試編輯/刪除/切 active。
-　其餘：③ 韓文 + 語言對雙選單（無迫切需求前不啟動；**實作前先拍板 D-011 偵測通用化開放問題**）。backlog 見下。可調項：`LANG_CJK_THRESHOLD`（中↔英方向微調，Zeabur 改，預設 0.15）。
+**下一步（建議）**：Phase 3 已排程的 ①②（D-015 精譯指令頁、D-017 code-switch 修正）皆已上線驗收，目前**無未驗收項**。剩餘 Phase 3 主項為 **③ 韓文 + 語言對雙選單（D-011）**，但**動工前必須先拍板 D-011 偵測通用化的 4 個開放問題**（(a) 自動猜方向 vs 說話者切換按鈕、(b) 中↔日腳本重疊、(c) 第三語言闖入 code-switch、(d) schema 語言碼對齊）——這些是設計決策，需先與使用者確認再 implement，不可默默選。若無迫切韓文需求，可改挑 backlog 項（見下）或其他未排程 Phase 3 條目（多站別/Safety keyword/Log viewer…）。可調項：`LANG_CJK_THRESHOLD`（中↔英方向微調，Zeabur 改，預設 0.15）。
 **注意事項**：app 的模型/供應商由 Zeabur 環境變數控制：`TRANSLATE_PROVIDER`（openai/anthropic/custom）、`TRANSLATE_MODEL`、`REFINE_MODEL`、`STT_MODEL`；STT 目前僅 OpenAI 實作，OPENAI_API_KEY 必填。真 key 永不經過對話，由使用者在 Zeabur 後台填。`STT_LANGUAGE`：單語為主現場可設（如 `zh`），雙語輪流現場留空（auto-detect）。`BASIC_AUTH_USERS`：未設＝全站開放（程式正常運行但無驗證）；設多組 `user:pass` 後保護靜態頁、`/api/*` 及 WebSocket `/ws`；Basic Auth 無正式登出，需關閉瀏覽器或清除憑證。開發用 workflow 模式且 subagent 要做模型分配（CLAUDE.md Development conventions）。
+
+---
+
+## 2026-06-14 — D-015 精譯指令頁線上實測通過；Phase 3 ①② 收綠
+
+**事件**：使用者回報自訂精譯指令頁（D-015）線上實測通過（CRUD + 第三行 [Refined] 照自訂指令風格）。
+
+**狀態變更**：
+- dashboard ① 標記改「已上線實測通過（2026-06-14）」；Phase 3 已排程的 ①（D-015）②（D-017）皆完成驗收，roadmap 目前無未驗收項。
+- 下一步收斂為 **③ 韓文 + 語言對雙選單（D-011）**，並標明動工前須先拍板 D-011 的 4 個開放問題（自動猜方向 vs 說話者按鈕、中↔日腳本重疊、第三語言闖入 code-switch、schema 語言碼對齊）。
+
+**本次無程式碼變更**（純驗收 + dashboard 同步）。
+
+**下一步**：與使用者確認是否啟動 ③（有無迫切韓文需求）；若啟動，先逐項拍板 D-011 開放問題再走 Workflow implement。否則可挑 backlog 或其他未排程 Phase 3 條目。
 
 ---
 
