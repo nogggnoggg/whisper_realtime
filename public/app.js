@@ -33,6 +33,10 @@ let audioState = 'idle';
 /** Feed auto-scroll flag — set false when user scrolls up */
 let autoScroll = true;
 
+/** Feed font-size scale factor. Range 0.9–1.6, step 0.1, default 1.0.
+ *  At exactly 1.0 the fs-scaled class is removed → zero CSS effect. */
+let feedFontScale = 1.0;
+
 /**
  * Manual 模式：講完才一次顯示「原文+翻譯」。
  * final 訊息先暫存於此，等對應 translation 到達後一起渲染。
@@ -66,6 +70,37 @@ const modeAutoEl        = /** @type {HTMLElement} */ (document.getElementById('m
 const modeManualEl      = /** @type {HTMLElement} */ (document.getElementById('mode-manual'));
 const mkAutoEl          = /** @type {HTMLElement} */ (document.getElementById('mk-auto'));
 const mkManualEl        = /** @type {HTMLElement} */ (document.getElementById('mk-manual'));
+const fontDecBtn        = /** @type {HTMLButtonElement} */ (document.getElementById('font-dec'));
+const fontIncBtn        = /** @type {HTMLButtonElement} */ (document.getElementById('font-inc'));
+
+// ── Feed font-scale ─────────────────────────────────────────────────────────
+
+/**
+ * Apply feedFontScale to #feed:
+ *   scale === 1 → remove class + CSS variable (pixel-perfect default, no new rules match)
+ *   scale !== 1 → add class + set --feed-scale so the new #feed.fs-scaled rules kick in
+ * Always persists to localStorage.
+ */
+function applyFeedScale() {
+  if (feedFontScale === 1) {
+    feedEl.classList.remove('fs-scaled');
+    feedEl.style.removeProperty('--feed-scale');
+  } else {
+    feedEl.classList.add('fs-scaled');
+    feedEl.style.setProperty('--feed-scale', String(feedFontScale));
+  }
+  localStorage.setItem('feedFontScale', String(feedFontScale));
+}
+
+fontDecBtn.addEventListener('click', function() {
+  feedFontScale = Math.max(0.9, Math.round((feedFontScale - 0.1) * 10) / 10);
+  applyFeedScale();
+});
+
+fontIncBtn.addEventListener('click', function() {
+  feedFontScale = Math.min(1.6, Math.round((feedFontScale + 0.1) * 10) / 10);
+  applyFeedScale();
+});
 
 // ── WebSocket ───────────────────────────────────────────────────────────────
 function connect() {
@@ -745,6 +780,16 @@ function updateTopbar() {
   if (storedRefined !== null) {
     refinedOn = storedRefined === 'true';
   }
+
+  // Feed font-scale (range 0.9–1.6; at 1 applyFeedScale() removes class — no effect)
+  const storedFeedScale = localStorage.getItem('feedFontScale');
+  if (storedFeedScale !== null) {
+    const parsed = parseFloat(storedFeedScale);
+    if (!isNaN(parsed) && parsed >= 0.9 && parsed <= 1.6) {
+      feedFontScale = parsed;
+    }
+  }
+  applyFeedScale();
 })();
 
 updateModeUI();

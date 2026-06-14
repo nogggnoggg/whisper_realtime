@@ -4,7 +4,7 @@
 
 ## 📌 目前狀態（每次更新時覆寫此區塊，不要往下追加）
 
-最後更新：2026-06-14（啟動門檻自動校準(PRD §13 音訊項 ④,D-021)+ 捨棄 ①②③；翻譯紀錄/分析頁 /logs.html（D-020）；D-011/D-019 已定案）
+最後更新：2026-06-14（對話 feed 文字大小調整(A−/A+,localStorage)；啟動門檻自動校準(④,D-021)；D-011/D-020 已定案）
 
 **所在階段**：v1 核心已上線並實測通過（Route A/B + Glossary + Basic Auth + STT 參數化）；線上語音實測已過。Phase 3 進行中：D-015 精譯指令頁已實作並**線上實測通過**、D-017 中英夾雜 bug 已修並驗證。Phase 3 已排程的 ①② 皆完成驗收，剩 ③（韓文＋語言對雙選單）尚未啟動。下一個動作見最底「下一步」。
 **怎麼跑**：線上 https://whisper-realtime-leon.zeabur.app （Basic Auth 已開，需帳密）；本機 PowerShell `npm start`（port 3100）→ http://localhost:3100
@@ -43,6 +43,7 @@
 *已完成的 Phase 3 項目：*
 - [x] Glossary 管理頁（Phase 2 期間完成）
 - [x] 基本登入＝app 內 HTTP Basic Auth（D-016，已上線驗證生效，見上）
+- [x] 對話 feed 文字大小調整(topbar A−/A+,範圍 ×0.9–×1.6 預設 ×1,localStorage 持久化,純前端、純加法不動既有功能)— 本次實作
 
 *待辦（依優先序）：*
 - [x] **① 自訂 Refine Prompt 管理頁（精譯指令）+ 導覽修復（D-015）— 已上線實測通過（2026-06-14）**
@@ -508,3 +509,23 @@ const wsURL = `${protocol}//${location.host}/ws`;
 **文件更新完成**（PROGRESS.md + DECISIONS.md + PROTOCOL.md，見 Part 0–4）。
 
 **下一步**：無（Part 0–4 為文件規畫，待 Part 1–3 程式碼實作）。
+
+---
+
+## 2026-06-14 — 對話 feed 文字大小調整(A−/A+)—純前端實作
+
+**實作方向**（計畫檔 `atomic-roaming-glacier.md`）：
+
+純前端、純加法、**預設不加 class 逐像素同現狀**：
+
+- **CSS**：`public/styles.css` 新增 `#feed.fs-scaled` 規則集（5 個選擇器：`.ts/.src/.tr/.refined/.badge` 使用 CSS 變數 `--feed-scale` 縮放），**不修改既有宣告**；新增 `.fs-btn` 按鈕樣式。
+- **HTML**：`public/index.html` topbar 加「字級」標籤 + `<button id="font-dec" class="fs-btn">A−</button>` + `<button id="font-inc" class="fs-btn">A+</button>`。
+- **JS**：`public/app.js` 新增 module 變數 `feedFontScale`、`applyFeedScale()` 邏輯、click handlers、localStorage 讀寫。步進 0.1、範圍 0.9–1.6、預設 1.0；`feedFontScale === 1` 時移除 `fs-scaled` class 與 inline style，精確還原預設。
+- **localStorage**：鍵名 `feedFontScale`，bootstrap 時讀回（範圍驗證 0.9–1.6）。
+- **不開決策**：屬小 UI，無協定/DB/架構變更，DECISIONS.md 不新增。
+
+**驗證重點**：
+- 預設（未調整）`#feed` 無 `fs-scaled` class、無 inline `--feed-scale` → 字級與改動前**逐像素相同**（git diff 對 styles.css 應僅見「新增行」，無既有行改動）
+- 按 A+/A− 調整生效、重整頁面保留；其他頁面與翻譯/音訊流程完全不受影響。
+
+**下一步**：Workflow 走碼（前端 sonnet、審查 opus）；完成後 git commit + push。

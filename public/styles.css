@@ -467,3 +467,30 @@ select:focus { outline: 2px solid var(--info-strong); }
   line-height: 1.5;
 }
 .safety .en { padding-left: 6px; }
+
+/* ──────────────────────────────────────────────
+   Feed Font-Size Scaling (A− / A+)
+   Only active when #feed has class .fs-scaled.
+   At scale=1 the class is removed → zero effect on existing declarations.
+   ────────────────────────────────────────────── */
+#feed.fs-scaled .ts      { font-size: calc(12px * var(--feed-scale, 1)); }
+#feed.fs-scaled .src     { font-size: calc(15px * var(--feed-scale, 1)); }
+#feed.fs-scaled .tr      { font-size: calc(14px * var(--feed-scale, 1)); }
+#feed.fs-scaled .refined { font-size: calc(14px * var(--feed-scale, 1)); }
+#feed.fs-scaled .badge   { font-size: calc(11px * var(--feed-scale, 1)); }
+
+/* Font-size control buttons in topbar */
+.fs-btn {
+  font-size: 11.5px;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 6px;
+  border: .5px solid var(--line);
+  background: var(--panel);
+  color: var(--muted);
+  cursor: pointer;
+  line-height: 1.4;
+  user-select: none;
+  transition: background .15s, color .15s;
+}
+.fs-btn:hover { background: var(--bg); color: var(--text); }
