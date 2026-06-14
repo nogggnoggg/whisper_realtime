@@ -43,6 +43,7 @@
 *已完成的 Phase 3 項目：*
 - [x] Glossary 管理頁（Phase 2 期間完成）
 - [x] 基本登入＝app 內 HTTP Basic Auth（D-016，已上線驗證生效，見上）
+- [x] CJK 門檻設定頁 `/lang-settings.html`（D-019）：zh↔en 偵測門檻可線上調整 + DB 持久化（`lang_pair_thresholds` 表）+ `/api/lang-thresholds` GET/PUT；topbar「語言偵測」連結；部分落實 D-011 per-pair 門檻表
 - [x] 對話 feed 文字大小調整(topbar A−/A+,範圍 ×0.9–×2.5 預設 ×1,localStorage 持久化,純前端、純加法不動既有功能)— 本次實作
 
 *待辦（依優先序）：*
