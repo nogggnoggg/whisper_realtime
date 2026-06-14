@@ -4,7 +4,7 @@
 
 ## 📌 目前狀態（每次更新時覆寫此區塊，不要往下追加）
 
-最後更新：2026-06-14（移除 D-018 雜訊卡片過濾 + 新增 CJK 門檻設定頁 D-019，文件更新完成；D-011 偵測通用化 4 問題全拍板；Phase 3 ③ 解除 gate）
+最後更新：2026-06-14（技術債清理：STT_CHUNK_MS 單一常數 + SILENCE_DURATION 幽靈變數移除；移除 D-018 雜訊卡片過濾 + 新增 CJK 門檻設定頁 D-019，文件更新完成；D-011 偵測通用化 4 問題全拍板；Phase 3 ③ 解除 gate）
 
 **所在階段**：v1 核心已上線並實測通過（Route A/B + Glossary + Basic Auth + STT 參數化）；線上語音實測已過。Phase 3 進行中：D-015 精譯指令頁已實作並**線上實測通過**、D-017 中英夾雜 bug 已修並驗證。Phase 3 已排程的 ①② 皆完成驗收，剩 ③（韓文＋語言對雙選單）尚未啟動。下一個動作見最底「下一步」。
 **怎麼跑**：線上 https://whisper-realtime-leon.zeabur.app （Basic Auth 已開，需帳密）；本機 PowerShell `npm start`（port 3100）→ http://localhost:3100
@@ -60,7 +60,7 @@
 **Backlog（待執行，未排定；線上實測後再評估是否做）**：
 
 - [ ] `STT_MIN_UTTERANCE_MS`（短雜訊卡片過濾）：評估後不做——硬體降噪 + 現有 4 層過濾已足夠；D-018 已撤回。
-- [ ] (需寫碼) `STT_CHUNK_MS` 可調（前端 append 塊大小，現寫死 ~20ms，需改 pcm-worklet.js/audio.js）+ 修 `SILENCE_DURATION` 幽靈變數（PROTOCOL 列過但 server 從不讀；靜音實際由前端設定頁滑桿控制 → 接成真的或從文件移除以免誤會）
+- [x] `STT_CHUNK_MS` + `SILENCE_DURATION` 幽靈變數修正（2026-06-14）：STT_CHUNK_MS 採選項 1（程式單一常數，接活 PCM_FLUSH_INTERVAL_MS，預設仍 20ms 行為不變，無 UI/env）；SILENCE_DURATION 幽靈 env 已從 PROTOCOL 移除，靜音由前端滑桿控制
 - [ ] (低成本/面板可見性) 視需要把「已支援但未上 Zeabur」的變數以預設值加進面板：`TRANSLATE_REASONING_EFFORT`(minimal)、`REFINE_REASONING_EFFORT`(minimal；gpt-5.5 不支援會自動移除)；換供應商才需 `ANTHROPIC_API_KEY`/`TRANSLATE_BASE_URL`/`TRANSLATE_API_KEY`；`STT_PROMPT`(僅 gpt-4o-transcribe)。這類**程式碼已支援**，只是沒加面板，跑預設值
 - [ ] (需寫碼/之後評估) 升級存取保護為 session/cookie 登入（方案 C）：真正登入頁 + 登出按鈕 + 閒置逾時失效 + 關瀏覽器清除憑證。動機＝目前 Basic Auth 無真正登出、憑證快取到「瀏覽器關閉」才清（關分頁不清）、server 無法控制有效期或強制清除（見 D-016）。注意：「關分頁瞬間失效」即使 session 也難 100% 保證，能做到的是登出/閒置逾時/關瀏覽器清
 
@@ -444,3 +444,25 @@ const wsURL = `${protocol}//${location.host}/ws`;
 - 使用者在 Zeabur 建 PostgreSQL service
 - 本機 .env 補 DATABASE_URL 與 REFINE_MODEL，實測 Route B + Glossary
 - 實測 OK 後進行 Zeabur 連動部署
+
+---
+
+## 2026-06-14 — 技術債清理：STT_CHUNK_MS 單一常數 + SILENCE_DURATION 幽靈變數修正
+
+**事件**：按計畫 `atomic-roaming-glacier.md` Part 2 執行——純文件修正，無程式碼變更。
+
+**完成事項**：
+- **PROTOCOL.md**：
+  - 狀態機說明（L227）：「silence duration(預設 800ms)」→「(預設 2000ms,前端設定頁可調)」
+  - 環境變數表（L250）：刪除 `SILENCE_DURATION` 整列（server 從不讀取）
+  - 實務註解（L270）：「不走環境變數」強化為「不支援環境變數（server 不讀取此參數）」
+- **PROGRESS.md**：
+  - dashboard Backlog：「STT_CHUNK_MS + SILENCE_DURATION 幽靈變數」改為 [x]，註明「STT_CHUNK_MS 採選項 1（單一常數，接活 PCM_FLUSH_INTERVAL_MS，無 UI/env）；SILENCE_DURATION 幽靈 env 已移除」
+  - 最後更新行改為 2026-06-14，括號增註本次清理
+
+**說明**：
+- **STT_CHUNK_MS**：前端 PCM append 塊大小決策已定案為「選項 1 — 程式碼單一常數」，無需 UI/env 注入（該管道成本不合，對此邊際旋鈕不成比例）；預設 20ms 行為不變。Part 1 實作（audio.js/pcm-worklet.js）另開任務。
+- **SILENCE_DURATION 幽靈變數**：PROTOCOL 列過但 server 完全不讀，靜音實際由前端設定頁滑桿控制（sttSilenceMs）→ 移除環境變數列以免誤會；強化文件說明 client-side 唯一來源。
+- **不開決策 D-0xx**：屬小清理（純文件移除誤導資訊 + 筆記實作決策），非架構/設計決策；理由記在本 handoff 足夠，無需新決策文檔。
+
+**下一步**：無（本次為文件清理，無後續代碼動作或驗證）。

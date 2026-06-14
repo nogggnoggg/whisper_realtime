@@ -224,7 +224,7 @@ Level Meter 的紅色門檻線依此公式繪製。
 Standby（不送音訊）
   → 音量超過 threshold
     → Listening（送音訊）
-      → 音量低於 threshold 持續 silence duration（預設 800ms）
+      → 音量低於 threshold 持續 silence duration（預設 2000ms，前端設定頁可調）
         → Ending
           → audio.stop
 ```
@@ -247,7 +247,6 @@ Standby（不送音訊）
 | `ANTHROPIC_API_KEY` | Anthropic API 金鑰（provider=anthropic 時必填） | — |
 | `TRANSLATE_BASE_URL` | 自訂翻譯端點基礎 URL（provider=custom 用，須相容 OpenAI 格式） | — |
 | `TRANSLATE_API_KEY` | 自訂翻譯端點 API 金鑰（provider=custom 用） | — |
-| `SILENCE_DURATION` | Auto 模式無音時停止錄音持續時間（毫秒） | `2000` |
 | `DATABASE_URL` | PostgreSQL 連線字串（Zeabur PG 或自行部署，例 `postgresql://user:pass@host:5432/db`） | — |
 | `REFINE_MODEL` | 精準翻譯模型，沿用 TRANSLATE_PROVIDER（例 openai 時為 `gpt-4o` 等），無值時 Route B 停用 | — |
 | `REFINE_REASONING_EFFORT` | gpt-5 系列精準翻譯的 reasoning_effort 值（none/low/medium/high/xhigh/minimal，模型不支援時自動移除重試） | `minimal` |
@@ -267,7 +266,7 @@ Standby（不送音訊）
 
 > **如何在 Zeabur 調整**：進入 Zeabur 後台 → 選 `app` service → Variables → 新增或修改對應環境變數 → 重啟 service 生效。所有 STT 參數均在 server 建立 OpenAI session 時送出（`session.update`），**不需改程式碼**，改環境變數重啟即可。
 
-> **Silence Hold-off（斷句延遲）**：Auto 模式音量低於門檻後等待多久才停止錄音，目前由**前端設定頁**的滑桿調整（預設 2000ms），是 client-side 設定，不走環境變數。
+> **Silence Hold-off（斷句延遲）**：Auto 模式音量低於門檻後等待多久才停止錄音，由**前端設定頁**的滑桿調整（預設 2000ms），是 **client-side 設定，不支援環境變數**（server 不讀取此參數）。
 
 ---
 

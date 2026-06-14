@@ -273,8 +273,9 @@ Threshold % ↔ dB 對應：0% = -50dB，100% = 0dB，線性對映（60% ≈ -20
 - 完全不暴露（永遠 auto-detect）：否決，單語為主現場的使用者有真實的精度改善需求，且成本為零。
 
 **Backlog（2026-06-13 補述）— 當初收斂計畫時刻意不做、列為待辦**：
-- `STT_MIN_UTTERANCE_MS`（過濾極短誤觸發雜訊卡片）與 `STT_CHUNK_MS`（前端 append 塊大小可調）：**程式碼未實作**，需寫碼（前者需 server commit gating + openai-stt.js 新增 `clear()`，後者需改 pcm-worklet.js/audio.js）。加 Zeabur 變數無效。價值/成本權衡後先擱置，待線上語音實測後再決定是否執行。
-- `SILENCE_DURATION`：幽靈變數——PROTOCOL 曾列出但 server 從不讀取，靜音 hold-off 實際由前端設定頁滑桿控制。待辦：接成真的環境變數，或從文件移除以免誤會。
+- `STT_MIN_UTTERANCE_MS`（過濾極短誤觸發雜訊卡片）：**✅ 已結案（2026-06-14）— 不做**。曾以 D-018 前端有效語音時長滑桿實作並上線，但評估後判定硬體降噪 + 現有過濾已足夠，D-018 撤回（見 DECISIONS D-018）。
+- `STT_CHUNK_MS`（前端 append 塊大小可調）：**✅ 已完成（2026-06-14）— 選項 1（程式單一常數）**。收掉 pcm-worklet.js 寫死的 0.02，接活 audio.js `PCM_FLUSH_INTERVAL_MS`（經 processorOptions 傳入），預設仍 20ms 行為不變；未加 UI/env。
+- `SILENCE_DURATION`：**✅ 已解決（2026-06-14）**。確認為幽靈變數（server 從不讀），已從 PROTOCOL.md 環境變數表移除；靜音 hold-off 由前端設定頁滑桿（`sttSilenceMs`）控制，PROTOCOL 已正名為 client-side 設定。
 - 區分清楚：上述為 C 類（需寫碼）；另有 B 類變數（`TRANSLATE_REASONING_EFFORT`/`REFINE_REASONING_EFFORT`/`STT_PROMPT` 等）程式碼已支援，只是未加進 Zeabur 面板、跑預設值，隨時可加，非 backlog 功能項。詳見 PROGRESS.md 2026-06-13 條目。
 
 ---

@@ -26,6 +26,7 @@ class PcmProcessor extends AudioWorkletProcessor {
     const opts = (options && options.processorOptions) || {};
     this._inputRate = opts.inputSampleRate || sampleRate; // global sampleRate from AudioWorkletGlobalScope
     this._targetRate = opts.targetSampleRate || TARGET_SAMPLE_RATE;
+    const flushMs = (opts.flushMs != null) ? opts.flushMs : 20; // PCM flush 間隔(ms)，由 audio.js 傳入
 
     // Resample ratio: how many input samples per output sample
     this._ratio = this._inputRate / this._targetRate;
@@ -44,7 +45,7 @@ class PcmProcessor extends AudioWorkletProcessor {
     // Accumulation buffer for PCM16 output before posting
     // We accumulate ~20 ms worth of TARGET_SAMPLE_RATE samples between posts
     this._pcmAccum = [];
-    this._pcmFlushSize = Math.ceil(this._targetRate * 0.02); // 480 samples @ 24 kHz = 20 ms
+    this._pcmFlushSize = Math.ceil(this._targetRate * (flushMs / 1000)); // 480 samples @ 24 kHz, flushMs=20
 
     // Level / RMS accumulation
     // ~50 ms at the input sample rate

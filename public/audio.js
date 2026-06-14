@@ -36,7 +36,7 @@ const TARGET_SAMPLE_RATE = 24000;
 const SILENCE_DURATION_MS_DEFAULT = 2000; // default hold-off before ending (ms)
 const MAX_UTTERANCE_MS = 20_000;     // hard cutoff
 const COOLDOWN_MS = 300;             // minimum gap between auto utterances
-const PCM_FLUSH_INTERVAL_MS = 20;   // how often worklet flushes PCM (informational)
+const PCM_FLUSH_INTERVAL_MS = 20;   // PCM flush 間隔(ms) — 單一來源，經 processorOptions.flushMs 傳入 worklet
 
 // Pre-roll buffer: keeps the last ~400 ms of PCM so that sentence-initial
 // words are not clipped when Auto mode threshold is crossed.
@@ -135,6 +135,7 @@ export class AudioPipeline {
       processorOptions: {
         inputSampleRate: this._audioCtx.sampleRate,
         targetSampleRate: TARGET_SAMPLE_RATE,
+        flushMs: PCM_FLUSH_INTERVAL_MS,
       },
       numberOfInputs: 1,
       numberOfOutputs: 0,
